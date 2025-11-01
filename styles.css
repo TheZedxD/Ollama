@@ -548,6 +548,62 @@ body {
     opacity: 0.8;
 }
 
+.image-button {
+    width: 40px;
+    height: 40px;
+    background-color: var(--text-secondary);
+    color: var(--button-text);
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.3s;
+}
+
+.image-button:hover {
+    opacity: 0.8;
+}
+
+.image-preview {
+    position: relative;
+    margin-bottom: 8px;
+    max-width: 200px;
+    border: 2px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+}
+
+.image-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.remove-image {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 24px;
+    height: 24px;
+    background-color: rgba(255, 68, 68, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+}
+
+.remove-image:hover {
+    background-color: rgba(255, 68, 68, 1);
+}
+
 .tools-badge {
     position: absolute;
     top: -5px;

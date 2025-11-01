@@ -126,11 +126,23 @@
                 </div>
 
                 <div class="typing-indicator" id="typing-indicator">AI is thinking...</div>
+
+                <!-- Image Preview -->
+                <div class="image-preview" id="image-preview" style="display: none;">
+                    <img id="preview-img" src="" alt="Preview">
+                    <button class="remove-image" onclick="removeImage()">×</button>
+                </div>
+
                 <div class="chat-input-wrapper">
                     <button class="tools-button" onclick="toggleToolsPopup()">
                         +
                         <span class="tools-badge" id="tools-badge">0</span>
                     </button>
+                    <!-- Image Upload Button (hidden by default) -->
+                    <button class="image-button" id="image-button" onclick="document.getElementById('image-input').click()" style="display: none;">
+                        📷
+                    </button>
+                    <input type="file" id="image-input" accept="image/*" onchange="handleImageUpload(event)" style="display: none;">
                     <textarea
                         class="chat-input"
                         id="chat-input"
