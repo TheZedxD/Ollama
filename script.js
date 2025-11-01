@@ -10,6 +10,32 @@ let activeTools = {
     'file-analysis': false,
     'memory': false
 };
+let currentImage = null; // Store current image data
+
+// Model configurations
+const MODEL_CONFIGS = {
+    'llama3.2:3b': {
+        name: 'llama3.2:3b',
+        supportsVision: false,
+        isDefault: true
+    },
+    'qwen2-vl:2b': {
+        name: 'qwen2-vl:2b',
+        supportsVision: true,
+        isDefault: false
+    },
+    // Support for other common vision model names
+    'llava': {
+        name: 'llava',
+        supportsVision: true,
+        isDefault: false
+    },
+    'llava:latest': {
+        name: 'llava:latest',
+        supportsVision: true,
+        isDefault: false
+    }
+};
 
 // LocalStorage keys
 const STORAGE_KEYS = {
@@ -31,7 +57,70 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     refreshModels();
     checkConnection();
+    updateImageButtonVisibility();
 });
+
+// Estimate token count (rough approximation: ~4 chars = 1 token)
+function estimateTokenCount(text) {
+    if (!text) return 0;
+    // More accurate estimation: count words and characters
+    const words = text.trim().split(/\s+/).length;
+    const chars = text.length;
+    // Average of word-based (1.3 tokens per word) and char-based (4 chars per token)
+    return Math.ceil((words * 1.3 + chars / 4) / 2);
+}
+
+// Check if current model supports vision
+function isVisionModelSelected() {
+    const selectedModel = document.getElementById('model-select').value;
+    return MODEL_CONFIGS[selectedModel]?.supportsVision || false;
+}
+
+// Update image button visibility based on selected model
+function updateImageButtonVisibility() {
+    const imageButton = document.getElementById('image-button');
+    if (isVisionModelSelected()) {
+        imageButton.style.display = 'flex';
+    } else {
+        imageButton.style.display = 'none';
+        // Clear any uploaded image if switching away from vision model
+        if (currentImage) {
+            removeImage();
+        }
+    }
+}
+
+// Handle image upload
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Check if it's an image
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        currentImage = e.target.result; // Base64 string
+
+        // Show preview
+        const preview = document.getElementById('image-preview');
+        const previewImg = document.getElementById('preview-img');
+        previewImg.src = currentImage;
+        preview.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+}
+
+// Remove uploaded image
+function removeImage() {
+    currentImage = null;
+    const preview = document.getElementById('image-preview');
+    preview.style.display = 'none';
+    document.getElementById('image-input').value = '';
+}
 
 // Load settings from localStorage
 function loadSettings() {
@@ -141,7 +230,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('top-k').addEventListener('change', saveSettings);
     document.getElementById('repeat-penalty').addEventListener('change', saveSettings);
     document.getElementById('system-prompt').addEventListener('change', saveSettings);
-    document.getElementById('model-select').addEventListener('change', saveSettings);
+    document.getElementById('model-select').addEventListener('change', () => {
+        saveSettings();
+        updateImageButtonVisibility();
+    });
 });
 
 // Toggle Sidebar
@@ -297,6 +389,9 @@ async function refreshModels() {
             if (savedModel && Array.from(modelSelect.options).some(opt => opt.value === savedModel)) {
                 modelSelect.value = savedModel;
             }
+
+            // Update image button visibility after model is loaded
+            updateImageButtonVisibility();
 
             // Show success message if reconnected
             const statusText = document.getElementById('status-text');
@@ -483,10 +578,60 @@ async function sendMessage() {
 
     if (!message) return;
 
-    // Add user message
-    addMessage('user', message);
-    chatHistory.push({ role: 'user', content: message });
+    // Calculate user message token count
+    const userTokenCount = estimateTokenCount(message);
+
+    // Prepare message content for vision models
+    let messageContent = message;
+    let hasImage = false;
+
+    if (isVisionModelSelected() && currentImage) {
+        hasImage = true;
+        // For display purposes, we'll show the image in the UI
+    }
+
+    // Add user message with token count
+    const userMessageDiv = createMessageElement('user');
+    const userContentDiv = userMessageDiv.querySelector('.message-content');
+
+    // If there's an image, display it in the message
+    if (hasImage) {
+        const imgElement = document.createElement('img');
+        imgElement.src = currentImage;
+        imgElement.style.maxWidth = '300px';
+        imgElement.style.marginBottom = '10px';
+        imgElement.style.display = 'block';
+        imgElement.style.border = '1px solid var(--border-color)';
+        userContentDiv.appendChild(imgElement);
+    }
+
+    userContentDiv.innerHTML += parseMarkdown(message);
+
+    // Add token count to user message header
+    const userHeaderDiv = userMessageDiv.querySelector('.message-header');
+    const userStatsSpan = document.createElement('div');
+    userStatsSpan.className = 'message-stats';
+    userStatsSpan.innerHTML = `<span>${userTokenCount} tokens</span>`;
+    userHeaderDiv.appendChild(userStatsSpan);
+
+    // Prepare content for chat history
+    if (hasImage) {
+        // For vision models, send image as base64
+        chatHistory.push({
+            role: 'user',
+            content: message,
+            images: [currentImage.split(',')[1]] // Remove data:image/...;base64, prefix
+        });
+    } else {
+        chatHistory.push({ role: 'user', content: message });
+    }
+
     chatInput.value = '';
+
+    // Clear the image after sending
+    if (hasImage) {
+        removeImage();
+    }
 
     // Disable input
     isGenerating = true;
