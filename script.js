@@ -225,17 +225,41 @@ async function checkConnection() {
     const statusText = document.getElementById('status-text');
 
     try {
-        const response = await fetch(`${ollamaUrl}/api/tags`);
+        const response = await fetch(`${ollamaUrl}/api/tags`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+        });
+
         if (response.ok) {
             statusDot.classList.add('connected');
             statusText.textContent = 'Connected';
+            return true;
         } else {
             statusDot.classList.remove('connected');
-            statusText.textContent = 'Disconnected';
+            statusText.textContent = `Error: ${response.status}`;
+            console.error('Ollama connection error:', response.status, response.statusText);
+            return false;
         }
     } catch (error) {
         statusDot.classList.remove('connected');
-        statusText.textContent = 'Disconnected';
+
+        // Provide more detailed error messages
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            statusText.textContent = 'CORS Error';
+            console.error('CORS error - Ollama needs CORS enabled. See README for setup instructions.');
+            console.error('Error details:', error);
+
+            // Show user-friendly error message
+            if (document.getElementById('chat-messages').children.length === 0) {
+                addMessage('system', `⚠️ **Connection Failed: CORS Error**\n\nOllama is blocking the connection due to CORS (Cross-Origin Resource Sharing) restrictions.\n\n**To fix this, you need to run Ollama with CORS enabled:**\n\n**On macOS/Linux:**\n\`\`\`bash\nOLLAMA_ORIGINS="*" ollama serve\n\`\`\`\n\n**On Windows (PowerShell):**\n\`\`\`powershell\n$env:OLLAMA_ORIGINS="*"\nollama serve\n\`\`\`\n\n**On Windows (CMD):**\n\`\`\`cmd\nset OLLAMA_ORIGINS=*\nollama serve\n\`\`\`\n\nThen click **Refresh Models** to reconnect.`);
+            }
+        } else {
+            statusText.textContent = 'Connection Failed';
+            console.error('Connection error:', error);
+        }
+        return false;
     }
 }
 
@@ -246,7 +270,17 @@ async function refreshModels() {
     const savedModel = localStorage.getItem(STORAGE_KEYS.SELECTED_MODEL);
 
     try {
-        const response = await fetch(`${ollamaUrl}/api/tags`);
+        const response = await fetch(`${ollamaUrl}/api/tags`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
 
         modelSelect.innerHTML = '';
@@ -263,6 +297,12 @@ async function refreshModels() {
             if (savedModel && Array.from(modelSelect.options).some(opt => opt.value === savedModel)) {
                 modelSelect.value = savedModel;
             }
+
+            // Show success message if reconnected
+            const statusText = document.getElementById('status-text');
+            if (statusText.textContent === 'CORS Error' || statusText.textContent === 'Connection Failed') {
+                addMessage('system', '✅ **Connected Successfully!**\n\nOllama connection established. You can now start chatting.');
+            }
         } else {
             const option = document.createElement('option');
             option.value = 'llama3.2:3b';
@@ -273,7 +313,14 @@ async function refreshModels() {
         checkConnection();
     } catch (error) {
         console.error('Error fetching models:', error);
-        addMessage('system', 'Error connecting to Ollama. Make sure Ollama is running.');
+
+        // Provide detailed error information
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            // CORS error - checkConnection will handle the message
+            checkConnection();
+        } else {
+            addMessage('system', `⚠️ **Connection Error**\n\nCould not connect to Ollama at \`${ollamaUrl}\`\n\nPlease make sure:\n1. Ollama is installed and running\n2. Ollama is started with CORS enabled (see error message above for instructions)\n3. The URL is correct (default: http://localhost:11434)`);
+        }
     }
 }
 
