@@ -526,44 +526,108 @@ function clearChat() {
 // FUNCTION CALLING / TOOLS SYSTEM
 // ===============================
 
-// DuckDuckGo Web Search Function
-async function webSearch(query) {
+// DuckDuckGo HTML Web Search Function (primary)
+async function searchDuckDuckGo(query) {
     try {
-        // Using DuckDuckGo Instant Answer API
-        const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`);
+        // Use DuckDuckGo HTML search for actual web results
+        const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
+        const html = await response.text();
+
+        // Parse HTML to extract search results
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const results = [];
+        const resultElements = doc.querySelectorAll('.result');
+
+        // Extract up to 5 search results
+        for (let i = 0; i < Math.min(resultElements.length, 5); i++) {
+            const result = resultElements[i];
+
+            const titleElement = result.querySelector('.result__a');
+            const snippetElement = result.querySelector('.result__snippet');
+            const urlElement = result.querySelector('.result__url');
+
+            if (titleElement && snippetElement) {
+                results.push({
+                    title: titleElement.textContent.trim(),
+                    snippet: snippetElement.textContent.trim(),
+                    url: urlElement ? urlElement.textContent.trim() : (titleElement.href || '')
+                });
+            }
+        }
+
+        return results;
+    } catch (error) {
+        console.error('DuckDuckGo search error:', error);
+        return [];
+    }
+}
+
+// Wikipedia API Search Function (fallback)
+async function searchWikipedia(query) {
+    try {
+        // Use Wikipedia API for factual queries
+        const response = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*&srlimit=3`);
         const data = await response.json();
 
-        let results = [];
+        const results = [];
 
-        // Extract relevant information
-        if (data.AbstractText) {
-            results.push({
-                title: data.Heading || 'Answer',
-                snippet: data.AbstractText,
-                url: data.AbstractURL
+        if (data.query && data.query.search) {
+            data.query.search.forEach(item => {
+                // Remove HTML tags from snippet
+                const snippet = item.snippet.replace(/<[^>]*>/g, '');
+                results.push({
+                    title: item.title,
+                    snippet: snippet,
+                    url: `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`
+                });
             });
         }
 
-        // Add related topics
-        if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-            data.RelatedTopics.slice(0, 5).forEach(topic => {
-                if (topic.Text && topic.FirstURL) {
-                    results.push({
-                        title: topic.Text.split(' - ')[0],
-                        snippet: topic.Text,
-                        url: topic.FirstURL
-                    });
-                }
-            });
+        return results;
+    } catch (error) {
+        console.error('Wikipedia search error:', error);
+        return [];
+    }
+}
+
+// Combined Web Search Function with fallback
+async function webSearch(query) {
+    try {
+        let allResults = [];
+        let searchSources = [];
+
+        // Primary: Try DuckDuckGo HTML search
+        console.log('Searching DuckDuckGo for:', query);
+        const ddgResults = await searchDuckDuckGo(query);
+
+        if (ddgResults.length > 0) {
+            allResults = allResults.concat(ddgResults);
+            searchSources.push('DuckDuckGo');
         }
 
-        if (results.length === 0) {
-            return `No direct results found for "${query}". Try rephrasing your search query.`;
+        // Fallback: If DDG returns no results or very few, also try Wikipedia
+        if (ddgResults.length < 2) {
+            console.log('DuckDuckGo returned limited results, trying Wikipedia fallback...');
+            const wikiResults = await searchWikipedia(query);
+
+            if (wikiResults.length > 0) {
+                allResults = allResults.concat(wikiResults);
+                searchSources.push('Wikipedia');
+            }
+        }
+
+        // If still no results, return error message
+        if (allResults.length === 0) {
+            return `No results found for "${query}". Try rephrasing your search query or being more specific.`;
         }
 
         // Format results as text
-        let formattedResults = `Web Search Results for: "${query}"\n\n`;
-        results.forEach((result, index) => {
+        let formattedResults = `Web Search Results for: "${query}"\n`;
+        formattedResults += `Sources: ${searchSources.join(', ')}\n\n`;
+
+        allResults.forEach((result, index) => {
             formattedResults += `${index + 1}. ${result.title}\n`;
             formattedResults += `   ${result.snippet}\n`;
             if (result.url) {
@@ -612,22 +676,51 @@ async function executeTool(toolName, parameters) {
 function parseToolCalls(text) {
     const toolCalls = [];
 
-    // Look for tool call patterns like: <tool>web_search("query here")</tool>
-    const toolPattern = /<tool>(\w+)\(["'](.+?)["']\)<\/tool>/g;
+    // Pattern 1: <tool>web_search("query here")</tool> - with double quotes
+    const pattern1 = /<tool>(\w+)\("([^"]+)"\)<\/tool>/gi;
     let match;
 
-    while ((match = toolPattern.exec(text)) !== null) {
+    while ((match = pattern1.exec(text)) !== null) {
         toolCalls.push({
-            name: match[1],
+            name: match[1].toLowerCase(),
             query: match[2]
         });
     }
 
-    // Also look for JSON-style tool calls
+    // Pattern 2: <tool>web_search('query here')</tool> - with single quotes
+    const pattern2 = /<tool>(\w+)\('([^']+)'\)<\/tool>/gi;
+    while ((match = pattern2.exec(text)) !== null) {
+        // Check if this exact call wasn't already added by pattern1
+        const exists = toolCalls.some(tc => tc.name === match[1].toLowerCase() && tc.query === match[2]);
+        if (!exists) {
+            toolCalls.push({
+                name: match[1].toLowerCase(),
+                query: match[2]
+            });
+        }
+    }
+
+    // Pattern 3: <tool>web_search(query here)</tool> - without quotes
+    const pattern3 = /<tool>(\w+)\(([^)]+)\)<\/tool>/gi;
+    while ((match = pattern3.exec(text)) !== null) {
+        const query = match[2].replace(/^["']|["']$/g, '').trim(); // Remove quotes if present
+        const exists = toolCalls.some(tc => tc.name === match[1].toLowerCase() && tc.query === query);
+        if (!exists) {
+            toolCalls.push({
+                name: match[1].toLowerCase(),
+                query: query
+            });
+        }
+    }
+
+    // Pattern 4: JSON-style tool calls in code blocks
     const jsonPattern = /```tool\s*\n([\s\S]*?)\n```/g;
     while ((match = jsonPattern.exec(text)) !== null) {
         try {
             const toolCall = JSON.parse(match[1]);
+            if (toolCall.name) {
+                toolCall.name = toolCall.name.toLowerCase();
+            }
             toolCalls.push(toolCall);
         } catch (e) {
             console.error('Failed to parse tool call JSON:', e);
@@ -645,9 +738,17 @@ function getToolsPrompt() {
 
     return `\n\nYou have access to the following tools:
 
-- web_search: Search the web for current information. To use this tool, include in your response: <tool>web_search("your search query here")</tool>
+**web_search** - Search the web using DuckDuckGo and Wikipedia for current information, facts, news, or answers to questions.
 
-When you need to search for information, use the tool syntax. The search will be performed and results will be provided to you, then you can continue your response with the information found.`;
+To use this tool, include the following syntax in your response:
+<tool>web_search("your search query here")</tool>
+
+Examples:
+- <tool>web_search("latest news about AI")</tool>
+- <tool>web_search("what is quantum computing")</tool>
+- <tool>web_search("current weather in Tokyo")</tool>
+
+IMPORTANT: When you use a tool, the search will be performed immediately and results will be provided to you. You will then receive another turn to synthesize and present the information to the user in a helpful, natural way. Do not tell the user to wait - just use the tool and you'll get the results automatically.`;
 }
 
 // Handle Enter Key
@@ -868,7 +969,23 @@ async function sendMessage() {
         const toolCalls = parseToolCalls(fullResponse);
 
         if (toolCalls.length > 0 && activeTools['web-search']) {
-            // Execute tool calls
+            // Save the assistant's message with tool calls to history
+            chatHistory.push({ role: 'assistant', content: fullResponse });
+
+            // Update the current message div to show the assistant's request
+            contentDiv.innerHTML = parseMarkdown(fullResponse);
+
+            // Update message header with stats for the tool request
+            const headerDiv = messageDiv.querySelector('.message-header');
+            const statsSpan = document.createElement('div');
+            statsSpan.className = 'message-stats';
+            statsSpan.innerHTML = `
+                <span>${totalTokens} tokens</span>
+                <span>${tokensPerSecond} tk/s</span>
+            `;
+            headerDiv.appendChild(statsSpan);
+
+            // Execute tool calls and display results
             for (const toolCall of toolCalls) {
                 // Show tool execution
                 const toolDiv = document.createElement('div');
@@ -895,20 +1012,122 @@ async function sendMessage() {
                 `;
                 scrollToBottom();
 
-                // Add tool result to history and continue conversation
+                // Add tool result to history
                 chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
             }
 
-            // Re-enable input for follow-up
-            isGenerating = false;
-            sendButton.disabled = false;
-            chatInput.disabled = false;
-            chatInput.style.opacity = '1';
-            chatInput.style.cursor = 'text';
+            // Now continue the conversation - let the AI synthesize the results
+            // Create a new assistant message for the synthesis
+            const synthesisMessageDiv = createMessageElement('assistant');
+            const synthesisContentDiv = synthesisMessageDiv.querySelector('.message-content');
+            synthesisContentDiv.innerHTML = '<span class="streaming-cursor"></span>';
+
+            // Show thinking animation
+            thinkingAnimation.classList.add('active');
+            document.getElementById('typing-indicator').classList.add('active');
+
+            // Make a follow-up API call to let the AI synthesize the results
+            try {
+                const synthesisResponse = await fetch(`${ollamaUrl}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: selectedModel,
+                        messages: chatHistory,
+                        stream: true
+                    })
+                });
+
+                if (!synthesisResponse.ok) {
+                    throw new Error(`HTTP error! status: ${synthesisResponse.status}`);
+                }
+
+                const synthesisReader = synthesisResponse.body.getReader();
+                const synthesisDecoder = new TextDecoder();
+                let synthesisBuffer = '';
+                let synthesisFullResponse = '';
+                let synthesisPromptTokens = 0;
+                let synthesisEvalTokens = 0;
+                const synthesisStartTime = Date.now();
+
+                while (true) {
+                    const { done, value } = await synthesisReader.read();
+
+                    if (done) {
+                        if (synthesisBuffer.trim()) {
+                            try {
+                                const json = JSON.parse(synthesisBuffer);
+                                if (json.message && json.message.content) {
+                                    synthesisFullResponse += json.message.content;
+                                }
+                                if (json.prompt_eval_count) synthesisPromptTokens = json.prompt_eval_count;
+                                if (json.eval_count) synthesisEvalTokens = json.eval_count;
+                            } catch (e) {
+                                console.error('Error parsing final synthesis buffer:', e);
+                            }
+                        }
+                        break;
+                    }
+
+                    synthesisBuffer += synthesisDecoder.decode(value, { stream: true });
+                    const lines = synthesisBuffer.split('\n');
+                    synthesisBuffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const json = JSON.parse(line);
+                                if (json.message && json.message.content) {
+                                    synthesisFullResponse += json.message.content;
+
+                                    try {
+                                        synthesisContentDiv.innerHTML = parseMarkdown(synthesisFullResponse) + '<span class="streaming-cursor"></span>';
+                                    } catch (parseError) {
+                                        synthesisContentDiv.innerHTML = escapeHtml(synthesisFullResponse) + '<span class="streaming-cursor"></span>';
+                                    }
+
+                                    scrollToBottom();
+                                }
+
+                                if (json.prompt_eval_count) synthesisPromptTokens = json.prompt_eval_count;
+                                if (json.eval_count) synthesisEvalTokens = json.eval_count;
+                            } catch (e) {
+                                console.error('Error parsing synthesis JSON line:', e);
+                            }
+                        }
+                    }
+                }
+
+                // Final update for synthesis
+                if (synthesisFullResponse) {
+                    synthesisContentDiv.innerHTML = parseMarkdown(synthesisFullResponse);
+                    chatHistory.push({ role: 'assistant', content: synthesisFullResponse });
+
+                    // Update synthesis message header with stats
+                    const synthesisHeaderDiv = synthesisMessageDiv.querySelector('.message-header');
+                    const synthesisTotalTokens = synthesisPromptTokens + synthesisEvalTokens;
+                    const synthesisElapsedTime = (Date.now() - synthesisStartTime) / 1000;
+                    const synthesisTokensPerSecond = synthesisEvalTokens > 0 ? (synthesisEvalTokens / synthesisElapsedTime).toFixed(2) : 0;
+                    const synthesisStatsSpan = document.createElement('div');
+                    synthesisStatsSpan.className = 'message-stats';
+                    synthesisStatsSpan.innerHTML = `
+                        <span>${synthesisTotalTokens} tokens</span>
+                        <span>${synthesisTokensPerSecond} tk/s</span>
+                    `;
+                    synthesisHeaderDiv.appendChild(synthesisStatsSpan);
+                }
+
+            } catch (synthesisError) {
+                console.error('Synthesis error:', synthesisError);
+                synthesisContentDiv.innerHTML = `<p style="color: #ff4444;">Error synthesizing results: ${synthesisError.message}</p>`;
+            }
+
+            // Done with tool execution and synthesis
             thinkingAnimation.classList.remove('active');
             document.getElementById('typing-indicator').classList.remove('active');
+            scrollToBottom();
 
-            return; // Exit early since tools were executed
+            return; // Exit after tool execution and synthesis
         }
 
         // Final update - remove cursor and ensure proper parsing

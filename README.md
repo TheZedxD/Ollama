@@ -188,13 +188,26 @@ All settings are automatically saved to localStorage.
 
 ## Web Search Feature
 
-The interface includes DuckDuckGo web search integration:
+The interface includes intelligent web search with dual-source integration:
 
 1. Click the "+" button in the chat input area
 2. Enable "Web Search"
 3. Now the AI can search the web when needed
 
-The AI will automatically use the `<tool>web_search("query")</tool>` syntax when it needs current information.
+**Features:**
+- **Primary Source:** DuckDuckGo HTML search for comprehensive web results
+- **Fallback Source:** Wikipedia API for factual queries when DuckDuckGo returns limited results
+- **Smart Synthesis:** AI automatically processes search results and presents information naturally
+- **Multi-Format Parsing:** Supports multiple tool call syntax variations
+
+The AI will automatically use the `<tool>web_search("query")</tool>` syntax when it needs current information. After searching, the AI receives the results and synthesizes them into a helpful response.
+
+**How it works:**
+1. User asks a question requiring web search
+2. AI uses `<tool>web_search("query")</tool>` syntax
+3. System searches DuckDuckGo (and Wikipedia if needed)
+4. Search results are displayed to user
+5. AI receives results and synthesizes them into a natural response
 
 ## Security Note
 
