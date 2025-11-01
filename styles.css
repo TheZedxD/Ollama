@@ -972,3 +972,16 @@ body {
     border: 6px solid transparent;
     border-right-color: var(--border-color);
 }
+
+/* Drag and Drop Styling */
+.chat-input-wrapper.drag-over {
+    background-color: rgba(0, 255, 159, 0.1);
+    border: 2px dashed var(--text-primary);
+    padding: 6px;
+    transition: all 0.3s ease;
+}
+
+.chat-input-wrapper.drag-over .chat-input {
+    border-color: var(--text-primary);
+    background-color: rgba(0, 255, 159, 0.05);
+}
