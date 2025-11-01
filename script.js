@@ -99,6 +99,109 @@ function isVisionModelSelected() {
     return visionPatterns.some(pattern => selectedModel.includes(pattern));
 }
 
+// Check if current model is a thinking model
+function isThinkingModelSelected() {
+    const selectedModel = document.getElementById('model-select').value.toLowerCase();
+
+    // Pattern matching for thinking model names
+    const thinkingPatterns = [
+        'deepseek-r1',
+        'deepseek-reasoner',
+        'qwq',
+        'r1:',
+        '-r1',
+        'reasoning',
+        'think'
+    ];
+
+    return thinkingPatterns.some(pattern => selectedModel.includes(pattern));
+}
+
+// Create a collapsible section
+function createCollapsibleSection(title, content, collapsed = false) {
+    const section = document.createElement('div');
+    section.className = `collapsible-section ${collapsed ? 'collapsed' : ''}`;
+
+    const header = document.createElement('div');
+    header.className = 'collapsible-header';
+    header.onclick = () => toggleCollapsible(section);
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'collapsible-title';
+    titleDiv.textContent = title;
+
+    const toggle = document.createElement('span');
+    toggle.className = 'collapsible-toggle';
+    toggle.textContent = '▼';
+
+    header.appendChild(titleDiv);
+    header.appendChild(toggle);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'collapsible-content';
+    contentDiv.innerHTML = content;
+
+    section.appendChild(header);
+    section.appendChild(contentDiv);
+
+    return section;
+}
+
+// Create a thinking box (yellow collapsible section)
+function createThinkingBox(content, collapsed = false) {
+    const box = document.createElement('div');
+    box.className = `thinking-box ${collapsed ? 'collapsed' : ''}`;
+
+    const header = document.createElement('div');
+    header.className = 'thinking-header';
+    header.onclick = () => toggleCollapsible(box);
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'thinking-title';
+    titleDiv.innerHTML = '🧠 Thinking Process';
+
+    const toggle = document.createElement('span');
+    toggle.className = 'thinking-toggle';
+    toggle.textContent = '▼';
+
+    header.appendChild(titleDiv);
+    header.appendChild(toggle);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'thinking-content';
+    contentDiv.innerHTML = content;
+
+    box.appendChild(header);
+    box.appendChild(contentDiv);
+
+    return box;
+}
+
+// Toggle collapsible section
+function toggleCollapsible(element) {
+    element.classList.toggle('collapsed');
+}
+
+// Parse thinking tags from response
+function parseThinking(text) {
+    const thinkPattern = /<think>([\s\S]*?)<\/think>/gi;
+    let match;
+    const thinkingSections = [];
+    let cleanedText = text;
+
+    while ((match = thinkPattern.exec(text)) !== null) {
+        thinkingSections.push(match[1].trim());
+    }
+
+    // Remove thinking tags from the main text
+    cleanedText = text.replace(thinkPattern, '').trim();
+
+    return {
+        thinking: thinkingSections,
+        response: cleanedText
+    };
+}
+
 // Update image button visibility based on selected model
 function updateImageButtonVisibility() {
     const imageButton = document.getElementById('image-button');
@@ -873,6 +976,14 @@ async function sendMessage() {
     let promptTokens = 0;
     let evalTokens = 0;
 
+    // Thinking model variables
+    const isThinkingModel = isThinkingModelSelected();
+    let thinkingContent = '';
+    let regularContent = '';
+    let insideThinkTag = false;
+    let thinkingBox = null;
+    let hasShownThinking = false;
+
     try {
         const response = await fetch(`${ollamaUrl}/api/chat`, {
             method: 'POST',
@@ -935,12 +1046,87 @@ async function sendMessage() {
                         if (json.message && json.message.content) {
                             fullResponse += json.message.content;
 
-                            // Parse and render, handling incomplete code blocks during streaming
-                            try {
-                                contentDiv.innerHTML = parseMarkdown(fullResponse) + '<span class="streaming-cursor"></span>';
-                            } catch (parseError) {
-                                // If parsing fails mid-stream, just show raw text with cursor
-                                contentDiv.innerHTML = escapeHtml(fullResponse) + '<span class="streaming-cursor"></span>';
+                            // Handle thinking models
+                            if (isThinkingModel) {
+                                // Parse for thinking tags
+                                const chunk = json.message.content;
+
+                                for (let char of chunk) {
+                                    if (!insideThinkTag) {
+                                        // Check if we're entering a think tag
+                                        const checkStr = (fullResponse.slice(-7) + char);
+                                        if (checkStr.endsWith('<think>')) {
+                                            insideThinkTag = true;
+                                            // Remove <think> from regular content if it was added
+                                            regularContent = regularContent.slice(0, -6);
+                                            continue;
+                                        }
+                                        regularContent += char;
+                                    } else {
+                                        // Check if we're exiting a think tag
+                                        const checkStr = (fullResponse.slice(-8) + char);
+                                        if (checkStr.endsWith('</think>')) {
+                                            insideThinkTag = false;
+                                            // Remove </think> from thinking content
+                                            thinkingContent = thinkingContent.slice(0, -7);
+
+                                            // Create or update thinking box (collapsed after thinking is done)
+                                            if (!hasShownThinking) {
+                                                thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>'), false);
+                                                contentDiv.appendChild(thinkingBox);
+                                                hasShownThinking = true;
+                                            } else {
+                                                const thinkContent = thinkingBox.querySelector('.thinking-content');
+                                                thinkContent.innerHTML = escapeHtml(thinkingContent).replace(/\n/g, '<br>');
+                                            }
+
+                                            // Collapse the thinking box after a short delay
+                                            setTimeout(() => {
+                                                if (thinkingBox && !thinkingBox.classList.contains('collapsed')) {
+                                                    toggleCollapsible(thinkingBox);
+                                                }
+                                            }, 1000);
+                                            continue;
+                                        }
+                                        thinkingContent += char;
+                                    }
+                                }
+
+                                // Update display
+                                if (insideThinkTag) {
+                                    // Show thinking content as it streams
+                                    if (!hasShownThinking) {
+                                        thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>') + '<span class="streaming-cursor"></span>', false);
+                                        contentDiv.appendChild(thinkingBox);
+                                        hasShownThinking = true;
+                                    } else {
+                                        const thinkContent = thinkingBox.querySelector('.thinking-content');
+                                        thinkContent.innerHTML = escapeHtml(thinkingContent).replace(/\n/g, '<br>') + '<span class="streaming-cursor"></span>';
+                                    }
+                                } else {
+                                    // Show regular response
+                                    try {
+                                        const regularDiv = document.createElement('div');
+                                        regularDiv.innerHTML = parseMarkdown(regularContent) + '<span class="streaming-cursor"></span>';
+
+                                        // Clear contentDiv and re-add thinking box if it exists
+                                        const existingThinkingBox = contentDiv.querySelector('.thinking-box');
+                                        contentDiv.innerHTML = '';
+                                        if (existingThinkingBox) {
+                                            contentDiv.appendChild(existingThinkingBox);
+                                        }
+                                        contentDiv.innerHTML += regularDiv.innerHTML;
+                                    } catch (parseError) {
+                                        contentDiv.innerHTML = (hasShownThinking ? contentDiv.innerHTML : '') + escapeHtml(regularContent) + '<span class="streaming-cursor"></span>';
+                                    }
+                                }
+                            } else {
+                                // Regular model - no thinking parsing
+                                try {
+                                    contentDiv.innerHTML = parseMarkdown(fullResponse) + '<span class="streaming-cursor"></span>';
+                                } catch (parseError) {
+                                    contentDiv.innerHTML = escapeHtml(fullResponse) + '<span class="streaming-cursor"></span>';
+                                }
                             }
 
                             scrollToBottom();
@@ -1005,11 +1191,17 @@ async function sendMessage() {
                 // Execute the tool
                 const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
 
-                // Update with results
-                toolDiv.innerHTML = `
-                    <div class="tool-execution-header">🔍 Search Results: ${toolCall.name}</div>
-                    <div class="tool-execution-content">${escapeHtml(toolResult).replace(/\n/g, '<br>')}</div>
-                `;
+                // Create collapsible search results (collapsed by default)
+                const formattedResult = escapeHtml(toolResult).replace(/\n/g, '<br>');
+                const collapsibleResults = createCollapsibleSection(
+                    `🔍 Search Results: ${toolCall.query}`,
+                    formattedResult,
+                    true // collapsed by default
+                );
+
+                // Replace the loading div with collapsible results
+                toolDiv.remove();
+                contentDiv.appendChild(collapsibleResults);
                 scrollToBottom();
 
                 // Add tool result to history
@@ -1132,8 +1324,32 @@ async function sendMessage() {
 
         // Final update - remove cursor and ensure proper parsing
         if (fullResponse) {
-            contentDiv.innerHTML = parseMarkdown(fullResponse);
-            chatHistory.push({ role: 'assistant', content: fullResponse });
+            // Handle thinking models differently
+            if (isThinkingModel && hasShownThinking) {
+                // Keep the thinking box collapsed and show the regular response
+                const existingThinkingBox = contentDiv.querySelector('.thinking-box');
+                contentDiv.innerHTML = '';
+
+                if (existingThinkingBox) {
+                    // Ensure thinking box is collapsed
+                    if (!existingThinkingBox.classList.contains('collapsed')) {
+                        existingThinkingBox.classList.add('collapsed');
+                    }
+                    contentDiv.appendChild(existingThinkingBox);
+                }
+
+                // Add regular content
+                const responseDiv = document.createElement('div');
+                responseDiv.innerHTML = parseMarkdown(regularContent);
+                contentDiv.appendChild(responseDiv);
+
+                // Save only the regular content to history (not thinking)
+                chatHistory.push({ role: 'assistant', content: regularContent });
+            } else {
+                // Regular model or no thinking detected
+                contentDiv.innerHTML = parseMarkdown(fullResponse);
+                chatHistory.push({ role: 'assistant', content: fullResponse });
+            }
 
             // Update message header with stats
             const headerDiv = messageDiv.querySelector('.message-header');
