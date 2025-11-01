@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Chat Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #1a1f3a;
+            --bg-tertiary: #252b4a;
+            --text-primary: #00ff9f;
+            --text-secondary: #00d4ff;
+            --text-normal: #e0e0e0;
+            --border-color: #00ff9f;
+            --input-bg: #1a1f3a;
+            --button-bg: #00ff9f;
+            --button-text: #0a0e27;
+            --code-bg: #0d1117;
+            --user-msg-bg: #252b4a;
+            --ai-msg-bg: #1a1f3a;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #d4c5a9;
+            --bg-secondary: #e8dcc8;
+            --bg-tertiary: #c9b896;
+            --text-primary: #6b4423;
+            --text-secondary: #8b5a2b;
+            --text-normal: #3d2817;
+            --border-color: #8b6f47;
+            --input-bg: #ffffff;
+            --button-bg: #8b6f47;
+            --button-text: #f5f0e8;
+            --code-bg: #0d1117;
+            --user-msg-bg: #ffffff;
+            --ai-msg-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: var(--bg-primary);
+            color: var(--text-normal);
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background-color: var(--bg-secondary);
+            border-right: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+            padding: 0;
+            overflow: hidden;
+            border-right: none;
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            left: 280px;
+            top: 20px;
+            width: 30px;
+            height: 40px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: left 0.3s ease;
+        }
+
+        .sidebar-toggle:hover {
+            opacity: 0.8;
+        }
+
+        .sidebar-toggle.collapsed {
+            left: 0;
+        }
+
+        .sidebar-header {
+            margin-bottom: 30px;
+        }
+
+        .sidebar-header h1 {
+            color: var(--text-primary);
+            font-size: 24px;
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+        }
+
+        .sidebar-header p {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .sidebar-section label {
+            display: block;
+            color: var(--text-primary);
+            font-size: 12px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-section select,
+        .sidebar-section input {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-normal);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .sidebar-section select:focus,
+        .sidebar-section input:focus {
+            outline: none;
+            border-color: var(--text-secondary);
+        }
+
+        .button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+
+        .button:hover {
+            opacity: 0.8;
+        }
+
+        .button:active {
+            transform: scale(0.98);
+        }
+
+        .button-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            margin-top: auto;
+            padding: 10px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background-color: #ff4444;
+        }
+
+        .status-dot.connected {
+            background-color: var(--text-primary);
+        }
+
+        /* Main Chat Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-primary);
+            position: relative;
+        }
+
+        .chat-header {
+            padding: 20px 30px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .chat-header h2 {
+            color: var(--text-primary);
+            font-size: 18px;
+            letter-spacing: 1px;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            right: 30px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            text-transform: uppercase;
+            transition: all 0.3s;
+        }
+
+        .theme-toggle:hover {
+            opacity: 0.8;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            padding-bottom: 140px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background-color: #000000;
+        }
+
+        [data-theme="light"] .chat-messages {
+            background-color: #f5ede0;
+        }
+
+        [data-theme="light"] .chat-messages::-webkit-scrollbar-track {
+            background-color: #f5ede0;
+        }
+
+        [data-theme="light"] .code-block {
+            background-color: #0d1117;
+        }
+
+        [data-theme="light"] .message-content pre {
+            background-color: #0d1117;
+            border-color: #8b6f47;
+        }
+
+        [data-theme="light"] .message-content pre code {
+            color: #e0e0e0;
+        }
+
+        [data-theme="light"] .code-header {
+            background-color: #1a1f3a;
+            color: #00ff9f;
+            border-color: #8b6f47;
+        }
+
+        [data-theme="light"] .message-content code {
+            background-color: #0d1117;
+            color: #00ff9f;
+            border-color: #8b6f47;
+        }
+
+        [data-theme="light"] .message-content pre::-webkit-scrollbar-track {
+            background-color: #0d1117;
+        }
+
+        [data-theme="light"] .message-content pre::-webkit-scrollbar-thumb {
+            background-color: #00ff9f;
+        }
+
+        [data-theme="light"] .copy-button {
+            background-color: #00ff9f;
+            color: #0a0e27;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-header {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .message-content {
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .message.user .message-content {
+            background-color: var(--user-msg-bg);
+            border-left: 3px solid var(--text-primary);
+        }
+
+        .message.assistant .message-content {
+            background-color: var(--ai-msg-bg);
+            border-left: 3px solid var(--text-secondary);
+        }
+
+        .message-content p {
+            margin-bottom: 10px;
+        }
+
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-content code {
+            background-color: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .message-content pre {
+            background-color: var(--code-bg);
+            padding: 0;
+            overflow-x: auto;
+            margin: 10px 0;
+            border: 1px solid var(--border-color);
+        }
+
+        .message-content pre code {
+            background-color: transparent;
+            padding: 15px;
+            display: block;
+            color: var(--text-normal);
+            border: none;
+            line-height: 1.5;
+            font-size: 13px;
+        }
+
+        .message-content pre::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .message-content pre::-webkit-scrollbar-track {
+            background-color: var(--code-bg);
+        }
+
+        .message-content pre::-webkit-scrollbar-thumb {
+            background-color: var(--border-color);
+        }
+
+        .code-block {
+            margin: 10px 0;
+            border: 1px solid var(--border-color);
+            background-color: var(--code-bg);
+        }
+
+        .code-header {
+            background-color: var(--bg-tertiary);
+            padding: 8px 15px;
+            font-size: 11px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .copy-button {
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        .copy-button:hover {
+            opacity: 0.8;
+        }
+
+        .copy-button:active {
+            transform: scale(0.95);
+        }
+
+        .chat-input-container {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 60px);
+            max-width: 900px;
+            padding: 12px;
+            background-color: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            z-index: 10;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            position: relative;
+        }
+
+        .tools-button {
+            width: 40px;
+            height: 40px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .tools-button:hover {
+            opacity: 0.8;
+        }
+
+        .tools-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: var(--text-secondary);
+            color: var(--button-text);
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            font-size: 9px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .tools-badge.active {
+            display: flex;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px 12px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-normal);
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: none;
+            min-height: 40px;
+            max-height: 120px;
+            transition: opacity 0.3s, cursor 0.3s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--text-secondary);
+        }
+
+        .chat-input:disabled {
+            cursor: not-allowed;
+        }
+
+        .send-button {
+            width: 70px;
+            height: 40px;
+            padding: 0;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .send-button:hover {
+            opacity: 0.8;
+        }
+
+        .send-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            background-color: var(--bg-tertiary);
+        }
+
+        /* WiFi Thinking Animation */
+        .thinking-animation {
+            display: none;
+            position: absolute;
+            bottom: 48px;
+            right: 12px;
+            width: 30px;
+            height: 20px;
+        }
+
+        .thinking-animation.active {
+            display: block;
+        }
+
+        .wifi-wave {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            background-color: var(--text-primary);
+            border-radius: 2px;
+            animation: wifiPulse 1.2s ease-in-out infinite;
+        }
+
+        .wifi-wave:nth-child(1) {
+            height: 6px;
+            animation-delay: 0s;
+        }
+
+        .wifi-wave:nth-child(2) {
+            height: 10px;
+            left: calc(50% - 8px);
+            animation-delay: 0.2s;
+        }
+
+        .wifi-wave:nth-child(3) {
+            height: 14px;
+            left: calc(50% + 8px);
+            animation-delay: 0.4s;
+        }
+
+        @keyframes wifiPulse {
+            0%, 100% {
+                opacity: 0.3;
+                transform: translateX(-50%) scaleY(0.5);
+            }
+            50% {
+                opacity: 1;
+                transform: translateX(-50%) scaleY(1);
+            }
+        }
+
+        /* Scrollbar */
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background-color: #000000;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background-color: var(--border-color);
+        }
+
+        .typing-indicator {
+            display: none;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-style: italic;
+            margin-bottom: 6px;
+        }
+
+        .typing-indicator.active {
+            display: block;
+        }
+
+        .streaming-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 16px;
+            background-color: var(--text-primary);
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 49% {
+                opacity: 1;
+            }
+            50%, 100% {
+                opacity: 0;
+            }
+        }
+
+        /* Tools Popup */
+        .tools-popup {
+            display: none;
+            position: absolute;
+            bottom: 75px;
+            left: 30px;
+            width: 280px;
+            background-color: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            padding: 15px;
+            z-index: 20;
+        }
+
+        .tools-popup.active {
+            display: block;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tools-popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tools-popup-header h3 {
+            color: var(--text-primary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .close-popup {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-popup:hover {
+            opacity: 0.7;
+        }
+
+        .tools-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .tool-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .tool-item:hover {
+            background-color: var(--input-bg);
+        }
+
+        .tool-item:hover .tool-tooltip {
+            display: block;
+        }
+
+        .tool-checkbox {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-color);
+            background-color: var(--input-bg);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .tool-checkbox.checked {
+            background-color: var(--button-bg);
+        }
+
+        .tool-checkbox.checked::after {
+            content: '✓';
+            color: var(--button-text);
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .tool-label {
+            flex: 1;
+            color: var(--text-normal);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .tool-tooltip {
+            display: none;
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-left: 10px;
+            padding: 8px 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-normal);
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 30;
+            pointer-events: none;
+        }
+
+        .tool-tooltip::before {
+            content: '';
+            position: absolute;
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border: 5px solid transparent;
+            border-right-color: var(--border-color);
+        }
+
+        /* Light mode sidebar input styling */
+        [data-theme="light"] .sidebar-section select,
+        [data-theme="light"] .sidebar-section input {
+            background-color: #ffffff;
+            color: #3d2817;
+        }
+
+        /* Sidebar Tooltips */
+        .sidebar-section {
+            position: relative;
+        }
+
+        .sidebar-tooltip {
+            display: none;
+            position: absolute;
+            left: 100%;
+            top: 0;
+            margin-left: 15px;
+            padding: 10px 14px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-normal);
+            font-size: 11px;
+            line-height: 1.4;
+            white-space: normal;
+            width: 220px;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .sidebar-section:hover .sidebar-tooltip {
+            display: block;
+            animation: tooltipFadeIn 0.3s ease-out;
+            animation-delay: 1s;
+            animation-fill-mode: both;
+        }
+
+        @keyframes tooltipFadeIn {
+            from {
+                opacity: 0;
+                transform: translateX(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .sidebar-tooltip::before {
+            content: '';
+            position: absolute;
+            right: 100%;
+            top: 15px;
+            border: 6px solid transparent;
+            border-right-color: var(--border-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar Toggle Button -->
+        <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">
+            <span id="toggle-icon">‹</span>
+        </button>
+
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>OLLAMA</h1>
+                <p>Local AI Interface</p>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="model-select">Model</label>
+                <select id="model-select">
+                    <option value="llama3.2:3b">llama3.2:3b</option>
+                </select>
+                <div class="sidebar-tooltip">Select which AI model to use for responses. Different models have different capabilities and sizes.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="ollama-url">Ollama URL</label>
+                <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="http://localhost:11434">
+                <div class="sidebar-tooltip">The network address where Ollama is running. Use localhost for local, or an IP address for remote connections.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="temperature">Temperature</label>
+                <input type="number" id="temperature" value="0.7" min="0" max="2" step="0.1">
+                <div class="sidebar-tooltip">Controls creativity and randomness. Lower values (0.1-0.5) make responses more focused and deterministic. Higher values (0.8-2.0) make them more creative and varied.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="system-prompt">System Prompt</label>
+                <input type="text" id="system-prompt" placeholder="You are a helpful assistant">
+                <div class="sidebar-tooltip">Set the AI's behavior and personality. This instruction guides how the AI responds throughout the conversation.</div>
+            </div>
+
+            <button class="button" onclick="refreshModels()">Refresh Models</button>
+            <button class="button button-secondary" onclick="clearChat()">Clear Chat</button>
+
+            <div class="status-indicator">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="main-content">
+            <div class="chat-header">
+                <h2>CHAT INTERFACE</h2>
+                <button class="theme-toggle" onclick="toggleTheme()">Light/Dark</button>
+            </div>
+
+            <div class="chat-messages" id="chat-messages">
+                <div class="message assistant">
+                    <div class="message-header">System</div>
+                    <div class="message-content">
+                        <p>Ollama Chat Interface initialized. Select a model and start chatting.</p>
+                    </div>
+                </div>
+                <div class="message assistant">
+                    <div class="message-header">AI</div>
+                    <div class="message-content">
+                        <p>Here's an example of how code is parsed and displayed:</p>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>python</span>
+                                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                            </div>
+                            <pre><code>def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+# Calculate first 10 numbers
+for i in range(10):
+    print(f"F({i}) = {fibonacci(i)}")</code></pre>
+                        </div>
+                        <p>The code above shows a recursive Fibonacci implementation. You can also use inline code like <code>print("hello")</code> within regular text.</p>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>javascript</span>
+                                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                            </div>
+                            <pre><code>const greeting = (name) => {
+    return `Hello, ${name}!`;
+};
+
+console.log(greeting("World"));</code></pre>
+                        </div>
+                        <p>All code blocks automatically get syntax highlighting and a copy button for easy use.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <!-- Tools Popup -->
+                <div class="tools-popup" id="tools-popup">
+                    <div class="tools-popup-header">
+                        <h3>Tools & Settings</h3>
+                        <button class="close-popup" onclick="toggleToolsPopup()">×</button>
+                    </div>
+                    <div class="tools-list">
+                        <div class="tool-item" onclick="toggleTool('web-search')">
+                            <div class="tool-checkbox" id="tool-web-search"></div>
+                            <div class="tool-label">Web Search</div>
+                            <div class="tool-tooltip">Enable web search capabilities</div>
+                        </div>
+                        <div class="tool-item" onclick="toggleTool('code-interpreter')">
+                            <div class="tool-checkbox" id="tool-code-interpreter"></div>
+                            <div class="tool-label">Code Interpreter</div>
+                            <div class="tool-tooltip">Execute and test code</div>
+                        </div>
+                        <div class="tool-item" onclick="toggleTool('image-generation')">
+                            <div class="tool-checkbox" id="tool-image-generation"></div>
+                            <div class="tool-label">Image Generation</div>
+                            <div class="tool-tooltip">Generate images from text</div>
+                        </div>
+                        <div class="tool-item" onclick="toggleTool('file-analysis')">
+                            <div class="tool-checkbox" id="tool-file-analysis"></div>
+                            <div class="tool-label">File Analysis</div>
+                            <div class="tool-tooltip">Analyze uploaded files</div>
+                        </div>
+                        <div class="tool-item" onclick="toggleTool('memory')">
+                            <div class="tool-checkbox" id="tool-memory"></div>
+                            <div class="tool-label">Memory</div>
+                            <div class="tool-tooltip">Remember context across chats</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="typing-indicator" id="typing-indicator">AI is thinking...</div>
+                <div class="chat-input-wrapper">
+                    <button class="tools-button" onclick="toggleToolsPopup()">
+                        +
+                        <span class="tools-badge" id="tools-badge">0</span>
+                    </button>
+                    <textarea 
+                        class="chat-input" 
+                        id="chat-input" 
+                        placeholder="Type your message here..."
+                        onkeydown="handleKeyPress(event)"></textarea>
+                    <div class="thinking-animation" id="thinking-animation">
+                        <div class="wifi-wave"></div>
+                        <div class="wifi-wave"></div>
+                        <div class="wifi-wave"></div>
+                    </div>
+                    <button class="send-button" id="send-button" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chatHistory = [];
+        let currentTheme = 'dark';
+        let isGenerating = false;
+        let isSidebarCollapsed = false;
+        let activeTools = {
+            'web-search': false,
+            'code-interpreter': false,
+            'image-generation': false,
+            'file-analysis': false,
+            'memory': false
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshModels();
+            checkConnection();
+        });
+
+        // Toggle Sidebar
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.getElementById('sidebar-toggle');
+            const toggleIcon = document.getElementById('toggle-icon');
+            isSidebarCollapsed = !isSidebarCollapsed;
+            
+            if (isSidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                toggleBtn.classList.add('collapsed');
+                toggleIcon.textContent = '›';
+            } else {
+                sidebar.classList.remove('collapsed');
+                toggleBtn.classList.remove('collapsed');
+                toggleIcon.textContent = '‹';
+            }
+        }
+
+        // Toggle Tools Popup
+        function toggleToolsPopup() {
+            const popup = document.getElementById('tools-popup');
+            popup.classList.toggle('active');
+        }
+
+        // Toggle Tool
+        function toggleTool(toolName) {
+            activeTools[toolName] = !activeTools[toolName];
+            const checkbox = document.getElementById('tool-' + toolName);
+            
+            if (activeTools[toolName]) {
+                checkbox.classList.add('checked');
+            } else {
+                checkbox.classList.remove('checked');
+            }
+
+            // Update badge
+            updateToolsBadge();
+        }
+
+        // Update Tools Badge
+        function updateToolsBadge() {
+            const badge = document.getElementById('tools-badge');
+            const activeCount = Object.values(activeTools).filter(v => v).length;
+            
+            badge.textContent = activeCount;
+            
+            if (activeCount > 0) {
+                badge.classList.add('active');
+            } else {
+                badge.classList.remove('active');
+            }
+        }
+
+        // Close popup when clicking outside
+        document.addEventListener('click', function(event) {
+            const popup = document.getElementById('tools-popup');
+            const toolsButton = event.target.closest('.tools-button');
+            const popupElement = event.target.closest('.tools-popup');
+            
+            if (!toolsButton && !popupElement && popup.classList.contains('active')) {
+                popup.classList.remove('active');
+            }
+        });
+
+        // Theme Toggle
+        function toggleTheme() {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+        }
+
+        // Check Ollama Connection
+        async function checkConnection() {
+            const ollamaUrl = document.getElementById('ollama-url').value;
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+
+            try {
+                const response = await fetch(`${ollamaUrl}/api/tags`);
+                if (response.ok) {
+                    statusDot.classList.add('connected');
+                    statusText.textContent = 'Connected';
+                } else {
+                    statusDot.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                }
+            } catch (error) {
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        // Refresh Models
+        async function refreshModels() {
+            const ollamaUrl = document.getElementById('ollama-url').value;
+            const modelSelect = document.getElementById('model-select');
+            const currentModel = modelSelect.value;
+
+            try {
+                const response = await fetch(`${ollamaUrl}/api/tags`);
+                const data = await response.json();
+
+                modelSelect.innerHTML = '';
+                
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = model.name;
+                        modelSelect.appendChild(option);
+                    });
+                    
+                    // Try to keep the current selection
+                    if (currentModel && Array.from(modelSelect.options).some(opt => opt.value === currentModel)) {
+                        modelSelect.value = currentModel;
+                    }
+                } else {
+                    const option = document.createElement('option');
+                    option.value = 'llama3.2:3b';
+                    option.textContent = 'llama3.2:3b (default)';
+                    modelSelect.appendChild(option);
+                }
+
+                checkConnection();
+            } catch (error) {
+                console.error('Error fetching models:', error);
+                addMessage('system', 'Error connecting to Ollama. Make sure Ollama is running.');
+            }
+        }
+
+        // Clear Chat
+        function clearChat() {
+            chatHistory = [];
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = `
+                <div class="message assistant">
+                    <div class="message-header">System</div>
+                    <div class="message-content">
+                        <p>Chat cleared. Ready for new conversation.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Handle Enter Key
+        function handleKeyPress(event) {
+            // Ctrl+Enter or Shift+Enter for new line
+            if ((event.ctrlKey || event.shiftKey) && event.key === 'Enter') {
+                // Allow default behavior (new line)
+                return;
+            }
+            
+            // Enter alone to send
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Send Message
+        async function sendMessage() {
+            if (isGenerating) return;
+
+            const chatInput = document.getElementById('chat-input');
+            const message = chatInput.value.trim();
+
+            if (!message) return;
+
+            // Add user message
+            addMessage('user', message);
+            chatHistory.push({ role: 'user', content: message });
+            chatInput.value = '';
+
+            // Disable input
+            isGenerating = true;
+            const sendButton = document.getElementById('send-button');
+            const thinkingAnimation = document.getElementById('thinking-animation');
+            
+            sendButton.disabled = true;
+            chatInput.disabled = true;
+            chatInput.style.opacity = '0.5';
+            chatInput.style.cursor = 'not-allowed';
+            thinkingAnimation.classList.add('active');
+            document.getElementById('typing-indicator').classList.add('active');
+
+            // Prepare request
+            const ollamaUrl = document.getElementById('ollama-url').value;
+            const model = document.getElementById('model-select').value;
+            const temperature = parseFloat(document.getElementById('temperature').value);
+            const systemPrompt = document.getElementById('system-prompt').value;
+
+            const messages = [];
+            if (systemPrompt) {
+                messages.push({ role: 'system', content: systemPrompt });
+            }
+            messages.push(...chatHistory);
+
+            // Create assistant message container
+            const messageDiv = createMessageElement('assistant');
+            const contentDiv = messageDiv.querySelector('.message-content');
+
+            let fullResponse = '';
+
+            try {
+                const response = await fetch(`${ollamaUrl}/api/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: messages,
+                        stream: true,
+                        options: {
+                            temperature: temperature
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        // Process any remaining buffer
+                        if (buffer.trim()) {
+                            try {
+                                const json = JSON.parse(buffer);
+                                if (json.message && json.message.content) {
+                                    fullResponse += json.message.content;
+                                }
+                            } catch (e) {
+                                console.error('Error parsing final buffer:', e);
+                            }
+                        }
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    
+                    // Keep the last incomplete line in the buffer
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const json = JSON.parse(line);
+                                if (json.message && json.message.content) {
+                                    fullResponse += json.message.content;
+                                    
+                                    // Parse and render, handling incomplete code blocks during streaming
+                                    try {
+                                        contentDiv.innerHTML = parseMarkdown(fullResponse) + '<span class="streaming-cursor"></span>';
+                                    } catch (parseError) {
+                                        // If parsing fails mid-stream, just show raw text with cursor
+                                        contentDiv.innerHTML = escapeHtml(fullResponse) + '<span class="streaming-cursor"></span>';
+                                    }
+                                    
+                                    scrollToBottom();
+                                }
+                                if (json.done) {
+                                    console.log('Stream complete');
+                                }
+                            } catch (e) {
+                                console.error('Error parsing JSON line:', e, 'Line:', line);
+                            }
+                        }
+                    }
+                }
+
+                // Final update - remove cursor and ensure proper parsing
+                if (fullResponse) {
+                    contentDiv.innerHTML = parseMarkdown(fullResponse);
+                    chatHistory.push({ role: 'assistant', content: fullResponse });
+                    scrollToBottom();
+                } else {
+                    throw new Error('No response received from model');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                contentDiv.innerHTML = `<p style="color: #ff4444;">Error: ${error.message}</p>`;
+                // Remove the failed assistant message from history
+                const chatMessages = document.getElementById('chat-messages');
+                if (chatMessages.lastChild === messageDiv) {
+                    // Only show error in UI, don't add to history
+                }
+            } finally {
+                isGenerating = false;
+                const sendButton = document.getElementById('send-button');
+                const chatInput = document.getElementById('chat-input');
+                const thinkingAnimation = document.getElementById('thinking-animation');
+                
+                sendButton.disabled = false;
+                chatInput.disabled = false;
+                chatInput.style.opacity = '1';
+                chatInput.style.cursor = 'text';
+                thinkingAnimation.classList.remove('active');
+                document.getElementById('typing-indicator').classList.remove('active');
+            }
+        }
+
+        // Create Message Element
+        function createMessageElement(role) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'message-header';
+            headerDiv.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'AI' : 'System';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            messageDiv.appendChild(headerDiv);
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+
+            scrollToBottom();
+            return messageDiv;
+        }
+
+        // Add Message
+        function addMessage(role, content) {
+            const messageDiv = createMessageElement(role);
+            const contentDiv = messageDiv.querySelector('.message-content');
+            contentDiv.innerHTML = parseMarkdown(content);
+        }
+
+        // Parse Markdown
+        function parseMarkdown(text) {
+            // Store original text for processing
+            let result = text;
+            
+            // Array to store code blocks temporarily
+            const codeBlocks = [];
+            let codeBlockIndex = 0;
+
+            // Extract and replace code blocks with placeholders
+            result = result.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                const language = lang || 'code';
+                const placeholder = `___CODEBLOCK_${codeBlockIndex}___`;
+                codeBlocks.push({ language, code: code.trim() });
+                codeBlockIndex++;
+                return placeholder;
+            });
+
+            // Now escape HTML in the remaining text (non-code parts)
+            result = result.replace(/&/g, '&amp;')
+                          .replace(/</g, '&lt;')
+                          .replace(/>/g, '&gt;');
+
+            // Process inline code (after HTML escaping)
+            result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+            // Bold
+            result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+            // Italic
+            result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+            // Line breaks
+            result = result.replace(/\n/g, '<br>');
+
+            // Restore code blocks with proper formatting
+            codeBlocks.forEach((block, index) => {
+                const placeholder = `___CODEBLOCK_${index}___`;
+                const codeBlockHtml = `<div class="code-block">
+                    <div class="code-header">
+                        <span>${block.language}</span>
+                        <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                    </div>
+                    <pre><code>${escapeHtml(block.code)}</code></pre>
+                </div>`;
+                result = result.replace(placeholder, codeBlockHtml);
+            });
+
+            // Paragraphs (split by double line breaks)
+            const parts = result.split('<br><br>');
+            result = parts.map(p => {
+                p = p.trim();
+                // Don't wrap code blocks in paragraphs
+                if (p.startsWith('<div class="code-block">')) {
+                    return p;
+                }
+                return p ? `<p>${p}</p>` : '';
+            }).join('');
+
+            return result;
+        }
+
+        // Helper function to escape HTML in code blocks
+        function escapeHtml(text) {
+            return text.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;')
+                      .replace(/'/g, '&#039;');
+        }
+
+        // Copy Code
+        function copyCode(button) {
+            // Get the specific code block that contains this button
+            const codeBlock = button.closest('.code-block');
+            if (!codeBlock) {
+                console.error('Code block not found');
+                return;
+            }
+            
+            // Get only the code element within THIS specific code block
+            const codeElement = codeBlock.querySelector('pre code');
+            if (!codeElement) {
+                console.error('Code element not found');
+                return;
+            }
+            
+            // Get the text content of only this specific code block
+            const code = codeElement.textContent;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.opacity = '0.7';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.opacity = '1';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy code:', err);
+                button.textContent = 'Error';
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                }, 2000);
+            });
+        }
+
+        // Scroll to Bottom
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
