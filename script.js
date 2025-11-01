@@ -19,6 +19,11 @@ const MODEL_CONFIGS = {
         supportsVision: false,
         isDefault: true
     },
+    'qwen3-vl:2b': {
+        name: 'qwen3-vl:2b',
+        supportsVision: true,
+        isDefault: false
+    },
     'qwen2-vl:2b': {
         name: 'qwen2-vl:2b',
         supportsVision: true,
@@ -73,16 +78,34 @@ function estimateTokenCount(text) {
 // Check if current model supports vision
 function isVisionModelSelected() {
     const selectedModel = document.getElementById('model-select').value;
-    return MODEL_CONFIGS[selectedModel]?.supportsVision || false;
+
+    // First check the MODEL_CONFIGS
+    if (MODEL_CONFIGS[selectedModel]?.supportsVision) {
+        return true;
+    }
+
+    // Fallback: Auto-detect vision models by name patterns
+    const lowerModelName = selectedModel.toLowerCase();
+    const visionKeywords = ['vl', 'vision', 'llava', 'bakllava', 'moondream'];
+
+    return visionKeywords.some(keyword => lowerModelName.includes(keyword));
 }
 
 // Update image button visibility based on selected model
 function updateImageButtonVisibility() {
     const imageButton = document.getElementById('image-button');
-    if (isVisionModelSelected()) {
+    const selectedModel = document.getElementById('model-select').value;
+    const isVision = isVisionModelSelected();
+
+    console.log('Model changed to:', selectedModel);
+    console.log('Is vision model:', isVision);
+
+    if (isVision) {
         imageButton.style.display = 'flex';
+        console.log('Camera button shown');
     } else {
         imageButton.style.display = 'none';
+        console.log('Camera button hidden');
         // Clear any uploaded image if switching away from vision model
         if (currentImage) {
             removeImage();
@@ -121,6 +144,55 @@ function removeImage() {
     preview.style.display = 'none';
     document.getElementById('image-input').value = '';
 }
+
+// Handle paste event for images
+function handlePaste(event) {
+    // Only process if a vision model is selected
+    if (!isVisionModelSelected()) {
+        return;
+    }
+
+    const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        // Check if the item is an image
+        if (item.type.indexOf('image') !== -1) {
+            event.preventDefault(); // Prevent default paste behavior
+
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                currentImage = e.target.result; // Base64 string
+
+                // Show preview
+                const preview = document.getElementById('image-preview');
+                const previewImg = document.getElementById('preview-img');
+                previewImg.src = currentImage;
+                preview.style.display = 'block';
+
+                console.log('Image pasted successfully');
+            };
+
+            reader.readAsDataURL(blob);
+            break; // Only handle the first image
+        }
+    }
+}
+
+// Add paste event listener when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    // Listen for paste events on the chat input
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.addEventListener('paste', handlePaste);
+    }
+
+    // Also listen on document level to catch pastes anywhere in the chat area
+    document.addEventListener('paste', handlePaste);
+});
 
 // Load settings from localStorage
 function loadSettings() {
