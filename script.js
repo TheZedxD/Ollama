@@ -967,7 +967,7 @@ async function sendMessage() {
     messages.push(...chatHistory);
 
     // Create assistant message container
-    const messageDiv = createMessageElement('assistant');
+    const messageDiv = createMessageElement('assistant', model);
     const contentDiv = messageDiv.querySelector('.message-content');
 
     let fullResponse = '';
@@ -1210,7 +1210,7 @@ async function sendMessage() {
 
             // Now continue the conversation - let the AI synthesize the results
             // Create a new assistant message for the synthesis
-            const synthesisMessageDiv = createMessageElement('assistant');
+            const synthesisMessageDiv = createMessageElement('assistant', model);
             const synthesisContentDiv = synthesisMessageDiv.querySelector('.message-content');
             synthesisContentDiv.innerHTML = '<span class="streaming-cursor"></span>';
 
@@ -1224,7 +1224,7 @@ async function sendMessage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: selectedModel,
+                        model: model,
                         messages: chatHistory,
                         stream: true
                     })
@@ -1390,7 +1390,7 @@ async function sendMessage() {
 }
 
 // Create Message Element
-function createMessageElement(role) {
+function createMessageElement(role, modelName = null) {
     const chatMessages = document.getElementById('chat-messages');
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${role}`;
@@ -1399,7 +1399,12 @@ function createMessageElement(role) {
     headerDiv.className = 'message-header';
 
     const roleLabel = document.createElement('span');
-    roleLabel.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'AI' : 'System';
+    // Display model name for assistant messages, otherwise use default labels
+    if (role === 'assistant' && modelName) {
+        roleLabel.textContent = modelName;
+    } else {
+        roleLabel.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'AI' : 'System';
+    }
     headerDiv.appendChild(roleLabel);
 
     const contentDiv = document.createElement('div');
