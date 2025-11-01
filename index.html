@@ -41,6 +41,30 @@
             </div>
 
             <div class="sidebar-section">
+                <label for="max-tokens">Max Tokens</label>
+                <input type="number" id="max-tokens" value="2048" min="1" max="131072" step="1">
+                <div class="sidebar-tooltip">Maximum number of tokens to generate in the response. Higher values allow longer responses but take more time.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="top-p">Top P</label>
+                <input type="number" id="top-p" value="0.9" min="0" max="1" step="0.05">
+                <div class="sidebar-tooltip">Nucleus sampling. Only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="top-k">Top K</label>
+                <input type="number" id="top-k" value="40" min="1" max="100" step="1">
+                <div class="sidebar-tooltip">Limits the next token selection to the K most probable tokens.</div>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="repeat-penalty">Repeat Penalty</label>
+                <input type="number" id="repeat-penalty" value="1.1" min="0" max="2" step="0.1">
+                <div class="sidebar-tooltip">Penalizes repetitive text. Higher values (1.2-1.5) reduce repetition more strongly.</div>
+            </div>
+
+            <div class="sidebar-section">
                 <label for="system-prompt">System Prompt</label>
                 <input type="text" id="system-prompt" placeholder="You are a helpful assistant">
                 <div class="sidebar-tooltip">Set the AI's behavior and personality. This instruction guides how the AI responds throughout the conversation.</div>
@@ -63,45 +87,6 @@
             </div>
 
             <div class="chat-messages" id="chat-messages">
-                <div class="message assistant">
-                    <div class="message-header">System</div>
-                    <div class="message-content">
-                        <p>Ollama Chat Interface initialized. Select a model and start chatting.</p>
-                    </div>
-                </div>
-                <div class="message assistant">
-                    <div class="message-header">AI</div>
-                    <div class="message-content">
-                        <p>Here's an example of how code is parsed and displayed:</p>
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span>python</span>
-                                <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                            </div>
-                            <pre><code>def fibonacci(n):
-    if n <= 1:
-        return n
-    return fibonacci(n-1) + fibonacci(n-2)
-
-# Calculate first 10 numbers
-for i in range(10):
-    print(f"F({i}) = {fibonacci(i)}")</code></pre>
-                        </div>
-                        <p>The code above shows a recursive Fibonacci implementation. You can also use inline code like <code>print("hello")</code> within regular text.</p>
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span>javascript</span>
-                                <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                            </div>
-                            <pre><code>const greeting = (name) => {
-    return `Hello, ${name}!`;
-};
-
-console.log(greeting("World"));</code></pre>
-                        </div>
-                        <p>All code blocks automatically get syntax highlighting and a copy button for easy use.</p>
-                    </div>
-                </div>
             </div>
 
             <div class="chat-input-container">

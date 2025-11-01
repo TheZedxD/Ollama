@@ -16,6 +16,10 @@ const STORAGE_KEYS = {
     THEME: 'ollama_theme',
     OLLAMA_URL: 'ollama_url',
     TEMPERATURE: 'ollama_temperature',
+    MAX_TOKENS: 'ollama_max_tokens',
+    TOP_P: 'ollama_top_p',
+    TOP_K: 'ollama_top_k',
+    REPEAT_PENALTY: 'ollama_repeat_penalty',
     SYSTEM_PROMPT: 'ollama_system_prompt',
     SELECTED_MODEL: 'ollama_selected_model',
     ACTIVE_TOOLS: 'ollama_active_tools',
@@ -48,6 +52,30 @@ function loadSettings() {
     const savedTemp = localStorage.getItem(STORAGE_KEYS.TEMPERATURE);
     if (savedTemp) {
         document.getElementById('temperature').value = savedTemp;
+    }
+
+    // Load max tokens
+    const savedMaxTokens = localStorage.getItem(STORAGE_KEYS.MAX_TOKENS);
+    if (savedMaxTokens) {
+        document.getElementById('max-tokens').value = savedMaxTokens;
+    }
+
+    // Load top_p
+    const savedTopP = localStorage.getItem(STORAGE_KEYS.TOP_P);
+    if (savedTopP) {
+        document.getElementById('top-p').value = savedTopP;
+    }
+
+    // Load top_k
+    const savedTopK = localStorage.getItem(STORAGE_KEYS.TOP_K);
+    if (savedTopK) {
+        document.getElementById('top-k').value = savedTopK;
+    }
+
+    // Load repeat penalty
+    const savedRepeatPenalty = localStorage.getItem(STORAGE_KEYS.REPEAT_PENALTY);
+    if (savedRepeatPenalty) {
+        document.getElementById('repeat-penalty').value = savedRepeatPenalty;
     }
 
     // Load system prompt
@@ -94,6 +122,10 @@ function saveSettings() {
     localStorage.setItem(STORAGE_KEYS.THEME, currentTheme);
     localStorage.setItem(STORAGE_KEYS.OLLAMA_URL, document.getElementById('ollama-url').value);
     localStorage.setItem(STORAGE_KEYS.TEMPERATURE, document.getElementById('temperature').value);
+    localStorage.setItem(STORAGE_KEYS.MAX_TOKENS, document.getElementById('max-tokens').value);
+    localStorage.setItem(STORAGE_KEYS.TOP_P, document.getElementById('top-p').value);
+    localStorage.setItem(STORAGE_KEYS.TOP_K, document.getElementById('top-k').value);
+    localStorage.setItem(STORAGE_KEYS.REPEAT_PENALTY, document.getElementById('repeat-penalty').value);
     localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPT, document.getElementById('system-prompt').value);
     localStorage.setItem(STORAGE_KEYS.SELECTED_MODEL, document.getElementById('model-select').value);
     localStorage.setItem(STORAGE_KEYS.ACTIVE_TOOLS, JSON.stringify(activeTools));
@@ -104,6 +136,10 @@ function saveSettings() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ollama-url').addEventListener('change', saveSettings);
     document.getElementById('temperature').addEventListener('change', saveSettings);
+    document.getElementById('max-tokens').addEventListener('change', saveSettings);
+    document.getElementById('top-p').addEventListener('change', saveSettings);
+    document.getElementById('top-k').addEventListener('change', saveSettings);
+    document.getElementById('repeat-penalty').addEventListener('change', saveSettings);
     document.getElementById('system-prompt').addEventListener('change', saveSettings);
     document.getElementById('model-select').addEventListener('change', saveSettings);
 });
@@ -245,14 +281,135 @@ async function refreshModels() {
 function clearChat() {
     chatHistory = [];
     const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML = `
-        <div class="message assistant">
-            <div class="message-header">System</div>
-            <div class="message-content">
-                <p>Chat cleared. Ready for new conversation.</p>
-            </div>
-        </div>
-    `;
+    chatMessages.innerHTML = '';
+}
+
+// ===============================
+// FUNCTION CALLING / TOOLS SYSTEM
+// ===============================
+
+// DuckDuckGo Web Search Function
+async function webSearch(query) {
+    try {
+        // Using DuckDuckGo Instant Answer API
+        const response = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`);
+        const data = await response.json();
+
+        let results = [];
+
+        // Extract relevant information
+        if (data.AbstractText) {
+            results.push({
+                title: data.Heading || 'Answer',
+                snippet: data.AbstractText,
+                url: data.AbstractURL
+            });
+        }
+
+        // Add related topics
+        if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+            data.RelatedTopics.slice(0, 5).forEach(topic => {
+                if (topic.Text && topic.FirstURL) {
+                    results.push({
+                        title: topic.Text.split(' - ')[0],
+                        snippet: topic.Text,
+                        url: topic.FirstURL
+                    });
+                }
+            });
+        }
+
+        if (results.length === 0) {
+            return `No direct results found for "${query}". Try rephrasing your search query.`;
+        }
+
+        // Format results as text
+        let formattedResults = `Web Search Results for: "${query}"\n\n`;
+        results.forEach((result, index) => {
+            formattedResults += `${index + 1}. ${result.title}\n`;
+            formattedResults += `   ${result.snippet}\n`;
+            if (result.url) {
+                formattedResults += `   URL: ${result.url}\n`;
+            }
+            formattedResults += '\n';
+        });
+
+        return formattedResults;
+    } catch (error) {
+        console.error('Web search error:', error);
+        return `Error performing web search: ${error.message}`;
+    }
+}
+
+// Tool definitions that the AI can use
+const AVAILABLE_TOOLS = [
+    {
+        name: 'web_search',
+        description: 'Search the web using DuckDuckGo to find current information, facts, or answers to questions',
+        parameters: {
+            query: {
+                type: 'string',
+                description: 'The search query to look up'
+            }
+        },
+        execute: webSearch
+    }
+];
+
+// Execute a tool call
+async function executeTool(toolName, parameters) {
+    const tool = AVAILABLE_TOOLS.find(t => t.name === toolName);
+    if (!tool) {
+        return `Error: Tool "${toolName}" not found`;
+    }
+
+    try {
+        return await tool.execute(parameters.query || parameters);
+    } catch (error) {
+        return `Error executing tool: ${error.message}`;
+    }
+}
+
+// Parse tool calls from AI response
+function parseToolCalls(text) {
+    const toolCalls = [];
+
+    // Look for tool call patterns like: <tool>web_search("query here")</tool>
+    const toolPattern = /<tool>(\w+)\(["'](.+?)["']\)<\/tool>/g;
+    let match;
+
+    while ((match = toolPattern.exec(text)) !== null) {
+        toolCalls.push({
+            name: match[1],
+            query: match[2]
+        });
+    }
+
+    // Also look for JSON-style tool calls
+    const jsonPattern = /```tool\s*\n([\s\S]*?)\n```/g;
+    while ((match = jsonPattern.exec(text)) !== null) {
+        try {
+            const toolCall = JSON.parse(match[1]);
+            toolCalls.push(toolCall);
+        } catch (e) {
+            console.error('Failed to parse tool call JSON:', e);
+        }
+    }
+
+    return toolCalls;
+}
+
+// Get tools prompt for system message
+function getToolsPrompt() {
+    if (!activeTools['web-search']) {
+        return '';
+    }
+
+    return `\n\nYou have access to the following tools:
+
+- web_search: Search the web for current information. To use this tool, include in your response: <tool>web_search("your search query here")</tool>
+
+When you need to search for information, use the tool syntax. The search will be performed and results will be provided to you, then you can continue your response with the information found.`;
 }
 
 // Handle Enter Key
@@ -296,15 +453,24 @@ async function sendMessage() {
     thinkingAnimation.classList.add('active');
     document.getElementById('typing-indicator').classList.add('active');
 
-    // Prepare request
+    // Prepare request with all settings
     const ollamaUrl = document.getElementById('ollama-url').value;
     const model = document.getElementById('model-select').value;
     const temperature = parseFloat(document.getElementById('temperature').value);
+    const maxTokens = parseInt(document.getElementById('max-tokens').value);
+    const topP = parseFloat(document.getElementById('top-p').value);
+    const topK = parseInt(document.getElementById('top-k').value);
+    const repeatPenalty = parseFloat(document.getElementById('repeat-penalty').value);
     const systemPrompt = document.getElementById('system-prompt').value;
 
     const messages = [];
-    if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt });
+    let systemMessage = systemPrompt || '';
+
+    // Add tools prompt if web search is enabled
+    systemMessage += getToolsPrompt();
+
+    if (systemMessage) {
+        messages.push({ role: 'system', content: systemMessage });
     }
     messages.push(...chatHistory);
 
@@ -313,6 +479,10 @@ async function sendMessage() {
     const contentDiv = messageDiv.querySelector('.message-content');
 
     let fullResponse = '';
+    let startTime = Date.now();
+    let totalTokens = 0;
+    let promptTokens = 0;
+    let evalTokens = 0;
 
     try {
         const response = await fetch(`${ollamaUrl}/api/chat`, {
@@ -325,7 +495,11 @@ async function sendMessage() {
                 messages: messages,
                 stream: true,
                 options: {
-                    temperature: temperature
+                    temperature: temperature,
+                    num_predict: maxTokens,
+                    top_p: topP,
+                    top_k: topK,
+                    repeat_penalty: repeatPenalty
                 }
             })
         });
@@ -349,6 +523,9 @@ async function sendMessage() {
                         if (json.message && json.message.content) {
                             fullResponse += json.message.content;
                         }
+                        // Capture final token stats
+                        if (json.prompt_eval_count) promptTokens = json.prompt_eval_count;
+                        if (json.eval_count) evalTokens = json.eval_count;
                     } catch (e) {
                         console.error('Error parsing final buffer:', e);
                     }
@@ -379,6 +556,11 @@ async function sendMessage() {
 
                             scrollToBottom();
                         }
+
+                        // Track token counts
+                        if (json.prompt_eval_count) promptTokens = json.prompt_eval_count;
+                        if (json.eval_count) evalTokens = json.eval_count;
+
                         if (json.done) {
                             console.log('Stream complete');
                         }
@@ -389,10 +571,73 @@ async function sendMessage() {
             }
         }
 
+        // Calculate stats
+        totalTokens = promptTokens + evalTokens;
+        const elapsedTime = (Date.now() - startTime) / 1000; // in seconds
+        const tokensPerSecond = evalTokens > 0 ? (evalTokens / elapsedTime).toFixed(2) : 0;
+
+        // Check for tool calls
+        const toolCalls = parseToolCalls(fullResponse);
+
+        if (toolCalls.length > 0 && activeTools['web-search']) {
+            // Execute tool calls
+            for (const toolCall of toolCalls) {
+                // Show tool execution
+                const toolDiv = document.createElement('div');
+                toolDiv.className = 'tool-execution';
+                toolDiv.innerHTML = `
+                    <div class="tool-execution-header">🔍 Executing: ${toolCall.name}</div>
+                    <div class="tool-execution-content">
+                        <div class="tool-execution-loading">
+                            <div class="tool-spinner"></div>
+                            <span>Searching: "${toolCall.query}"</span>
+                        </div>
+                    </div>
+                `;
+                contentDiv.appendChild(toolDiv);
+                scrollToBottom();
+
+                // Execute the tool
+                const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
+
+                // Update with results
+                toolDiv.innerHTML = `
+                    <div class="tool-execution-header">🔍 Search Results: ${toolCall.name}</div>
+                    <div class="tool-execution-content">${escapeHtml(toolResult).replace(/\n/g, '<br>')}</div>
+                `;
+                scrollToBottom();
+
+                // Add tool result to history and continue conversation
+                chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
+            }
+
+            // Re-enable input for follow-up
+            isGenerating = false;
+            sendButton.disabled = false;
+            chatInput.disabled = false;
+            chatInput.style.opacity = '1';
+            chatInput.style.cursor = 'text';
+            thinkingAnimation.classList.remove('active');
+            document.getElementById('typing-indicator').classList.remove('active');
+
+            return; // Exit early since tools were executed
+        }
+
         // Final update - remove cursor and ensure proper parsing
         if (fullResponse) {
             contentDiv.innerHTML = parseMarkdown(fullResponse);
             chatHistory.push({ role: 'assistant', content: fullResponse });
+
+            // Update message header with stats
+            const headerDiv = messageDiv.querySelector('.message-header');
+            const statsSpan = document.createElement('div');
+            statsSpan.className = 'message-stats';
+            statsSpan.innerHTML = `
+                <span>${totalTokens} tokens</span>
+                <span>${tokensPerSecond} tk/s</span>
+            `;
+            headerDiv.appendChild(statsSpan);
+
             scrollToBottom();
         } else {
             throw new Error('No response received from model');
@@ -429,7 +674,10 @@ function createMessageElement(role) {
 
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
-    headerDiv.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'AI' : 'System';
+
+    const roleLabel = document.createElement('span');
+    roleLabel.textContent = role === 'user' ? 'You' : role === 'assistant' ? 'AI' : 'System';
+    headerDiv.appendChild(roleLabel);
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
