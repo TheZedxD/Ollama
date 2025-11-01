@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshModels();
     checkConnection();
     updateImageButtonVisibility();
+    setupDragAndDrop();
 });
 
 // Estimate token count (rough approximation: ~4 chars = 1 token)
@@ -72,8 +73,30 @@ function estimateTokenCount(text) {
 
 // Check if current model supports vision
 function isVisionModelSelected() {
-    const selectedModel = document.getElementById('model-select').value;
-    return MODEL_CONFIGS[selectedModel]?.supportsVision || false;
+    const selectedModel = document.getElementById('model-select').value.toLowerCase();
+
+    // Check hardcoded configs first
+    if (MODEL_CONFIGS[selectedModel]?.supportsVision) {
+        return true;
+    }
+
+    // Pattern matching for common vision model names
+    const visionPatterns = [
+        'llava',
+        'bakllava',
+        'qwen',
+        'qwen2-vl',
+        'qwen-vl',
+        'minicpm-v',
+        'cogvlm',
+        'yi-vl',
+        'internvl',
+        'moondream',
+        'vision',
+        'vl-'
+    ];
+
+    return visionPatterns.some(pattern => selectedModel.includes(pattern));
 }
 
 // Update image button visibility based on selected model
@@ -120,6 +143,79 @@ function removeImage() {
     const preview = document.getElementById('image-preview');
     preview.style.display = 'none';
     document.getElementById('image-input').value = '';
+}
+
+// Setup drag and drop for images
+function setupDragAndDrop() {
+    const chatInputWrapper = document.querySelector('.chat-input-wrapper');
+    const chatInput = document.getElementById('chat-input');
+
+    // Prevent default drag behaviors on the entire wrapper
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        chatInputWrapper.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // Highlight drop area when item is dragged over it
+    ['dragenter', 'dragover'].forEach(eventName => {
+        chatInputWrapper.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        chatInputWrapper.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight(e) {
+        // Only highlight if vision model is selected
+        if (isVisionModelSelected()) {
+            chatInputWrapper.classList.add('drag-over');
+        }
+    }
+
+    function unhighlight(e) {
+        chatInputWrapper.classList.remove('drag-over');
+    }
+
+    // Handle dropped files
+    chatInputWrapper.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        // Only allow drop if vision model is selected
+        if (!isVisionModelSelected()) {
+            alert('Please select a vision model to upload images');
+            return;
+        }
+
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length > 0) {
+            const file = files[0];
+
+            // Check if it's an image
+            if (!file.type.startsWith('image/')) {
+                alert('Please drop an image file');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentImage = e.target.result; // Base64 string
+
+                // Show preview
+                const preview = document.getElementById('image-preview');
+                const previewImg = document.getElementById('preview-img');
+                previewImg.src = currentImage;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    }
 }
 
 // Load settings from localStorage
