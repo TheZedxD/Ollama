@@ -108,6 +108,7 @@ function isThinkingModelSelected() {
         'deepseek-r1',
         'deepseek-reasoner',
         'qwq',
+        'qwen',  // Added qwen models
         'r1:',
         '-r1',
         'reasoning',
@@ -977,7 +978,7 @@ async function sendMessage() {
     let evalTokens = 0;
 
     // Thinking model variables
-    const isThinkingModel = isThinkingModelSelected();
+    let isThinkingModel = isThinkingModelSelected();
     let thinkingContent = '';
     let regularContent = '';
     let insideThinkTag = false;
@@ -1045,6 +1046,40 @@ async function sendMessage() {
                         const json = JSON.parse(line);
                         if (json.message && json.message.content) {
                             fullResponse += json.message.content;
+
+                            // Dynamically detect thinking tags in response
+                            if (!isThinkingModel && fullResponse.includes('<think>')) {
+                                isThinkingModel = true;
+                                console.log('Detected thinking tags in response, enabling thinking mode');
+
+                                // Reprocess the accumulated fullResponse to extract any thinking content
+                                regularContent = '';
+                                thinkingContent = '';
+                                insideThinkTag = false;
+
+                                for (let char of fullResponse) {
+                                    if (!insideThinkTag) {
+                                        const checkStr = (regularContent + thinkingContent).slice(-6) + char;
+                                        if (checkStr.endsWith('<think>')) {
+                                            insideThinkTag = true;
+                                            regularContent = regularContent.slice(0, -6);
+                                            continue;
+                                        }
+                                        regularContent += char;
+                                    } else {
+                                        const checkStr = (regularContent + thinkingContent).slice(-7) + char;
+                                        if (checkStr.endsWith('</think>')) {
+                                            insideThinkTag = false;
+                                            thinkingContent = thinkingContent.slice(0, -7);
+                                            continue;
+                                        }
+                                        thinkingContent += char;
+                                    }
+                                }
+
+                                // Skip the normal chunk processing below since we just reprocessed everything
+                                continue;
+                            }
 
                             // Handle thinking models
                             if (isThinkingModel) {
