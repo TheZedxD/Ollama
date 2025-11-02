@@ -1070,22 +1070,15 @@ async function sendMessage() {
                                             // Remove </think> from thinking content
                                             thinkingContent = thinkingContent.slice(0, -7);
 
-                                            // Create or update thinking box (collapsed after thinking is done)
+                                            // Create or update thinking box (collapsed by default)
                                             if (!hasShownThinking) {
-                                                thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>'), false);
+                                                thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>'), true);
                                                 contentDiv.appendChild(thinkingBox);
                                                 hasShownThinking = true;
                                             } else {
                                                 const thinkContent = thinkingBox.querySelector('.thinking-content');
                                                 thinkContent.innerHTML = escapeHtml(thinkingContent).replace(/\n/g, '<br>');
                                             }
-
-                                            // Collapse the thinking box after a short delay
-                                            setTimeout(() => {
-                                                if (thinkingBox && !thinkingBox.classList.contains('collapsed')) {
-                                                    toggleCollapsible(thinkingBox);
-                                                }
-                                            }, 1000);
                                             continue;
                                         }
                                         thinkingContent += char;
@@ -1094,9 +1087,9 @@ async function sendMessage() {
 
                                 // Update display
                                 if (insideThinkTag) {
-                                    // Show thinking content as it streams
+                                    // Show thinking content as it streams (collapsed by default)
                                     if (!hasShownThinking) {
-                                        thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>') + '<span class="streaming-cursor"></span>', false);
+                                        thinkingBox = createThinkingBox(escapeHtml(thinkingContent).replace(/\n/g, '<br>') + '<span class="streaming-cursor"></span>', true);
                                         contentDiv.appendChild(thinkingBox);
                                         hasShownThinking = true;
                                     } else {
