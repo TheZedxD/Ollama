@@ -5,12 +5,11 @@ let isGenerating = false;
 let isSidebarCollapsed = false;
 let activeTools = {
     'web-search': false,
-    'code-interpreter': false,
-    'image-generation': false,
-    'file-analysis': false,
-    'memory': false
+    'file-analysis': false
 };
 let currentImage = null; // Store current image data
+let currentFile = null; // Store current file data
+let currentFileName = ''; // Store current file name
 
 // Model configurations
 const MODEL_CONFIGS = {
@@ -58,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshModels();
     checkConnection();
     updateImageButtonVisibility();
+    updateFileButtonVisibility();
     setupDragAndDrop();
 });
 
@@ -247,6 +247,71 @@ function removeImage() {
     const preview = document.getElementById('image-preview');
     preview.style.display = 'none';
     document.getElementById('image-input').value = '';
+}
+
+// Update file button visibility based on file analysis tool
+function updateFileButtonVisibility() {
+    const fileButton = document.getElementById('file-button');
+    if (activeTools['file-analysis']) {
+        fileButton.style.display = 'flex';
+    } else {
+        fileButton.style.display = 'none';
+        // Clear any uploaded file if disabling file analysis
+        if (currentFile) {
+            removeFile();
+        }
+    }
+}
+
+// Handle file upload
+async function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Check file size (limit to 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        alert('File size too large. Maximum size is 10MB.');
+        return;
+    }
+
+    currentFileName = file.name;
+
+    // Read file based on type
+    const reader = new FileReader();
+
+    reader.onload = function(e) {
+        currentFile = e.target.result;
+
+        // Show preview
+        const preview = document.getElementById('file-preview');
+        const fileName = document.getElementById('file-name');
+        const fileSize = document.getElementById('file-size');
+
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        preview.style.display = 'flex';
+    };
+
+    // Read as text for all supported file types
+    reader.readAsText(file);
+}
+
+// Remove uploaded file
+function removeFile() {
+    currentFile = null;
+    currentFileName = '';
+    const preview = document.getElementById('file-preview');
+    preview.style.display = 'none';
+    document.getElementById('file-input').value = '';
+}
+
+// Format file size for display
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
 // Setup drag and drop for images
@@ -471,6 +536,11 @@ function toggleTool(toolName) {
         checkbox.classList.add('checked');
     } else {
         checkbox.classList.remove('checked');
+    }
+
+    // Update file button visibility if file-analysis tool is toggled
+    if (toolName === 'file-analysis') {
+        updateFileButtonVisibility();
     }
 
     // Update badge
@@ -747,6 +817,49 @@ async function webSearch(query) {
     }
 }
 
+// File analysis function
+async function analyzeFile(params) {
+    try {
+        if (!currentFile || !currentFileName) {
+            return 'No file has been uploaded. Please upload a file first.';
+        }
+
+        const fileExtension = currentFileName.split('.').pop().toLowerCase();
+        let analysis = `File Analysis Results\n`;
+        analysis += `Filename: ${currentFileName}\n`;
+        analysis += `File Type: ${fileExtension.toUpperCase()}\n\n`;
+
+        // Parse based on file type
+        if (fileExtension === 'json') {
+            try {
+                const parsed = JSON.parse(currentFile);
+                analysis += `Content Type: JSON\n`;
+                analysis += `Structure: ${JSON.stringify(parsed, null, 2)}\n`;
+            } catch (e) {
+                analysis += `Error: Invalid JSON format - ${e.message}\n`;
+            }
+        } else if (fileExtension === 'csv') {
+            const lines = currentFile.split('\n');
+            analysis += `Content Type: CSV\n`;
+            analysis += `Total Rows: ${lines.length}\n`;
+            analysis += `Preview (first 10 lines):\n${lines.slice(0, 10).join('\n')}\n`;
+        } else {
+            // Plain text files
+            const lines = currentFile.split('\n');
+            const words = currentFile.split(/\s+/).filter(w => w.length > 0);
+            analysis += `Content Type: Text\n`;
+            analysis += `Total Lines: ${lines.length}\n`;
+            analysis += `Total Words: ${words.length}\n`;
+            analysis += `Total Characters: ${currentFile.length}\n\n`;
+            analysis += `Content:\n${currentFile}\n`;
+        }
+
+        return analysis;
+    } catch (error) {
+        return `Error analyzing file: ${error.message}`;
+    }
+}
+
 // Tool definitions that the AI can use
 const AVAILABLE_TOOLS = [
     {
@@ -759,6 +872,17 @@ const AVAILABLE_TOOLS = [
             }
         },
         execute: webSearch
+    },
+    {
+        name: 'file_analysis',
+        description: 'Analyze the content of an uploaded file (TXT, JSON, CSV, MD, code files)',
+        parameters: {
+            instruction: {
+                type: 'string',
+                description: 'Optional instruction for how to analyze the file'
+            }
+        },
+        execute: analyzeFile
     }
 ];
 
@@ -836,23 +960,49 @@ function parseToolCalls(text) {
 
 // Get tools prompt for system message
 function getToolsPrompt() {
-    if (!activeTools['web-search']) {
+    const enabledTools = [];
+    let toolsPrompt = '';
+
+    if (activeTools['web-search']) {
+        enabledTools.push('web_search');
+    }
+    if (activeTools['file-analysis']) {
+        enabledTools.push('file_analysis');
+    }
+
+    if (enabledTools.length === 0) {
         return '';
     }
 
-    return `\n\nYou have access to the following tools:
+    toolsPrompt = `\n\nYou have access to the following tools:\n\n`;
 
-**web_search** - Search the web using DuckDuckGo and Wikipedia for current information, facts, news, or answers to questions.
-
-To use this tool, include the following syntax in your response:
-<tool>web_search("your search query here")</tool>
+    if (activeTools['web-search']) {
+        toolsPrompt += `**web_search** - Search the web using DuckDuckGo and Wikipedia for current information, facts, news, or answers to questions.
+Syntax: <tool>web_search("your search query here")</tool>
 
 Examples:
 - <tool>web_search("latest news about AI")</tool>
 - <tool>web_search("what is quantum computing")</tool>
 - <tool>web_search("current weather in Tokyo")</tool>
 
-IMPORTANT: When you use a tool, the search will be performed immediately and results will be provided to you. You will then receive another turn to synthesize and present the information to the user in a helpful, natural way. Do not tell the user to wait - just use the tool and you'll get the results automatically.`;
+`;
+    }
+
+    if (activeTools['file-analysis']) {
+        toolsPrompt += `**file_analysis** - Analyze the content of an uploaded file. The user must upload a file first using the file upload button (📎).
+Syntax: <tool>file_analysis("optional instruction")</tool>
+
+Examples:
+- <tool>file_analysis("summarize this file")</tool>
+- <tool>file_analysis("extract key points")</tool>
+- <tool>file_analysis("analyze the data structure")</tool>
+
+`;
+    }
+
+    toolsPrompt += `\nIMPORTANT: When you use a tool, it will be executed immediately and results will be provided to you. You will then receive another turn to synthesize and present the information to the user in a helpful, natural way. Do not tell the user to wait - just use the tool and you'll get the results automatically.`;
+
+    return toolsPrompt;
 }
 
 // Handle Enter Key
@@ -1182,7 +1332,7 @@ async function sendMessage() {
         // Check for tool calls
         const toolCalls = parseToolCalls(fullResponse);
 
-        if (toolCalls.length > 0 && activeTools['web-search']) {
+        if (toolCalls.length > 0 && (activeTools['web-search'] || activeTools['file-analysis'])) {
             // Save the assistant's message with tool calls to history
             chatHistory.push({ role: 'assistant', content: fullResponse });
 

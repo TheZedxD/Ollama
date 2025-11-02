@@ -7,11 +7,15 @@ A beautiful, feature-rich web interface for chatting with Ollama AI models local
 - 🤖 Clean, modern chat interface
 - 🎨 Dark/Light theme support
 - 🔧 Advanced model parameters (temperature, top-p, top-k, etc.)
-- 🔍 Web search integration with DuckDuckGo
-- 📝 Markdown and code syntax support
+- 🔍 Web search integration with DuckDuckGo + Wikipedia
+- 📎 File analysis tool (TXT, JSON, CSV, MD, code files)
+- 👁️ Vision model support with image upload
+- 🧠 Thinking model support (DeepSeek R1, QwQ, Qwen)
+- 📝 Markdown and code syntax support with copy buttons
 - 💾 Settings persistence with localStorage
 - ⚡ Real-time streaming responses
 - 📊 Token usage and speed statistics
+- 🎯 Collapsible thinking sections and search results
 
 ## Prerequisites
 
@@ -186,28 +190,99 @@ The sidebar provides controls for:
 
 All settings are automatically saved to localStorage.
 
-## Web Search Feature
+## Available Tools
 
-The interface includes intelligent web search with dual-source integration:
+The interface includes two powerful tools that enhance the AI's capabilities:
 
+**Tool Management:**
+- Click the "+" button at the bottom of the chat to access the tools menu
+- The number badge on the "+" button shows how many tools are currently enabled
+- Tool settings are saved automatically
+
+### 1. Web Search 🔍
+
+Intelligent web search with dual-source integration:
+
+**How to enable:**
 1. Click the "+" button in the chat input area
 2. Enable "Web Search"
-3. Now the AI can search the web when needed
+3. The AI can now search the web when needed
 
 **Features:**
 - **Primary Source:** DuckDuckGo HTML search for comprehensive web results
 - **Fallback Source:** Wikipedia API for factual queries when DuckDuckGo returns limited results
 - **Smart Synthesis:** AI automatically processes search results and presents information naturally
-- **Multi-Format Parsing:** Supports multiple tool call syntax variations
-
-The AI will automatically use the `<tool>web_search("query")</tool>` syntax when it needs current information. After searching, the AI receives the results and synthesizes them into a helpful response.
+- **Collapsible Results:** Search results are shown in a collapsible section for clean UI
 
 **How it works:**
-1. User asks a question requiring web search
+1. User asks a question requiring current information
 2. AI uses `<tool>web_search("query")</tool>` syntax
 3. System searches DuckDuckGo (and Wikipedia if needed)
-4. Search results are displayed to user
+4. Search results are displayed in a collapsible section
 5. AI receives results and synthesizes them into a natural response
+
+### 2. File Analysis 📎
+
+Analyze and process various file types:
+
+**How to enable:**
+1. Click the "+" button in the chat input area
+2. Enable "File Analysis"
+3. A file upload button (📎) will appear
+
+**Supported file types:**
+- **Text files:** .txt, .md
+- **Data files:** .json, .csv
+- **Code files:** .js, .py, .java, .c, .cpp, .html, .css, .xml, .yaml, .yml
+
+**How to use:**
+1. Click the file upload button (📎)
+2. Select a file (max 10MB)
+3. The file preview will appear
+4. Ask the AI to analyze the file
+5. AI uses `<tool>file_analysis("instruction")</tool>` syntax
+6. System analyzes the file and provides structured results
+7. AI synthesizes the analysis into a helpful response
+
+**Analysis features:**
+- **JSON files:** Parses and displays structure
+- **CSV files:** Shows row count and data preview
+- **Text files:** Provides line count, word count, and full content
+- **Code files:** Displays content for code review and explanation
+
+## Vision Model Support 👁️
+
+The interface automatically detects vision models and enables image upload:
+
+**Supported vision models:**
+- llava, bakllava
+- qwen2-vl, qwen-vl
+- minicpm-v
+- cogvlm
+- yi-vl, internvl
+- moondream
+
+**How to use:**
+1. Select a vision model from the dropdown
+2. The image button (📷) will appear automatically
+3. Click to upload an image or drag & drop
+4. Image preview will appear
+5. Ask questions about the image
+6. The AI can see and analyze the image
+
+## Thinking Model Support 🧠
+
+The interface automatically detects thinking models and displays their reasoning process:
+
+**Supported thinking models:**
+- DeepSeek R1, DeepSeek Reasoner
+- QwQ (Qwen with Questions)
+- Qwen models
+
+**Features:**
+- **Collapsible Thinking:** Reasoning process is shown in a collapsible yellow box (collapsed by default)
+- **Clean Output:** Regular response is shown separately from the thinking process
+- **Real-time Streaming:** Watch the AI think in real-time (when expanded)
 
 ## Security Note
 

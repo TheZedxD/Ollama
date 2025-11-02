@@ -102,25 +102,10 @@
                             <div class="tool-label">Web Search</div>
                             <div class="tool-tooltip">Enable web search capabilities</div>
                         </div>
-                        <div class="tool-item" onclick="toggleTool('code-interpreter')">
-                            <div class="tool-checkbox" id="tool-code-interpreter"></div>
-                            <div class="tool-label">Code Interpreter</div>
-                            <div class="tool-tooltip">Execute and test code</div>
-                        </div>
-                        <div class="tool-item" onclick="toggleTool('image-generation')">
-                            <div class="tool-checkbox" id="tool-image-generation"></div>
-                            <div class="tool-label">Image Generation</div>
-                            <div class="tool-tooltip">Generate images from text</div>
-                        </div>
                         <div class="tool-item" onclick="toggleTool('file-analysis')">
                             <div class="tool-checkbox" id="tool-file-analysis"></div>
                             <div class="tool-label">File Analysis</div>
-                            <div class="tool-tooltip">Analyze uploaded files</div>
-                        </div>
-                        <div class="tool-item" onclick="toggleTool('memory')">
-                            <div class="tool-checkbox" id="tool-memory"></div>
-                            <div class="tool-label">Memory</div>
-                            <div class="tool-tooltip">Remember context across chats</div>
+                            <div class="tool-tooltip">Analyze uploaded files (TXT, PDF, JSON, CSV, MD)</div>
                         </div>
                     </div>
                 </div>
@@ -133,6 +118,16 @@
                     <button class="remove-image" onclick="removeImage()">×</button>
                 </div>
 
+                <!-- File Preview -->
+                <div class="file-preview" id="file-preview" style="display: none;">
+                    <div class="file-preview-content">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name" id="file-name"></span>
+                        <span class="file-size" id="file-size"></span>
+                    </div>
+                    <button class="remove-file" onclick="removeFile()">×</button>
+                </div>
+
                 <div class="chat-input-wrapper">
                     <button class="tools-button" onclick="toggleToolsPopup()">
                         +
@@ -143,6 +138,11 @@
                         📷
                     </button>
                     <input type="file" id="image-input" accept="image/*" onchange="handleImageUpload(event)" style="display: none;">
+                    <!-- File Upload Button (shown when file analysis is enabled) -->
+                    <button class="file-button" id="file-button" onclick="document.getElementById('file-input').click()" style="display: none;">
+                        📎
+                    </button>
+                    <input type="file" id="file-input" accept=".txt,.pdf,.json,.csv,.md,.js,.py,.java,.c,.cpp,.html,.css,.xml,.yaml,.yml" onchange="handleFileUpload(event)" style="display: none;">
                     <textarea
                         class="chat-input"
                         id="chat-input"
