@@ -72,6 +72,14 @@
                 <div class="sidebar-tooltip">Set the AI's behavior and personality. This instruction guides how the AI responds throughout the conversation.</div>
             </div>
 
+            <div class="sidebar-section">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="debug-mode" onchange="toggleDebugMode()">
+                    <span>Debug Mode</span>
+                </label>
+                <div class="sidebar-tooltip">Enable debug mode to see detailed logs of tool calls, API responses, and file operations for troubleshooting.</div>
+            </div>
+
             <button class="button" onclick="refreshModels()">Refresh Models</button>
             <button class="button button-secondary" onclick="clearChat()">Clear Chat</button>
 
@@ -89,6 +97,20 @@
             </div>
 
             <div class="chat-messages" id="chat-messages">
+            </div>
+
+            <!-- Debug Panel -->
+            <div class="debug-panel" id="debug-panel" style="display: none;">
+                <div class="debug-panel-header" onclick="toggleDebugPanel()">
+                    <span class="debug-panel-title">🐛 Debug Console</span>
+                    <span class="debug-panel-toggle" id="debug-panel-toggle">▼</span>
+                </div>
+                <div class="debug-panel-content" id="debug-panel-content">
+                    <div class="debug-controls">
+                        <button class="button button-small" onclick="clearDebugLogs()">Clear Logs</button>
+                    </div>
+                    <div class="debug-logs" id="debug-logs"></div>
+                </div>
             </div>
 
             <div class="chat-input-container">

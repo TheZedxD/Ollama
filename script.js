@@ -10,6 +10,8 @@ let activeTools = {
 let settings = {
     'auto-clear-file': true // Auto-clear file after analysis by default
 };
+let debugMode = false; // Debug mode state
+let debugPanelCollapsed = false; // Debug panel collapsed state
 let currentImage = null; // Store current image data
 let currentFile = null; // Store current file data
 let currentFileName = ''; // Store current file name
@@ -53,7 +55,8 @@ const STORAGE_KEYS = {
     SELECTED_MODEL: 'ollama_selected_model',
     ACTIVE_TOOLS: 'ollama_active_tools',
     SETTINGS: 'ollama_settings',
-    SIDEBAR_COLLAPSED: 'ollama_sidebar_collapsed'
+    SIDEBAR_COLLAPSED: 'ollama_sidebar_collapsed',
+    DEBUG_MODE: 'ollama_debug_mode'
 };
 
 // Initialize
@@ -156,6 +159,54 @@ function createCollapsibleSection(title, content, collapsed = false) {
     section.appendChild(contentDiv);
 
     return section;
+}
+
+// Format web search results with icons, clickable links, and timestamp
+function formatSearchResults(searchData) {
+    try {
+        const data = JSON.parse(searchData);
+
+        // Handle error case
+        if (data.error) {
+            return `<div class="search-error">${escapeHtml(data.message)}</div>`;
+        }
+
+        const timestamp = new Date(data.timestamp);
+        const timeStr = timestamp.toLocaleString();
+
+        let html = `<div class="search-results-container">`;
+        html += `<div class="search-metadata">`;
+        html += `<div class="search-timestamp">⏰ ${timeStr}</div>`;
+        html += `<div class="search-sources">Sources: ${data.sources.map(s => {
+            if (s === 'DuckDuckGo') return '🦆 DuckDuckGo';
+            if (s === 'Wikipedia') return '📚 Wikipedia';
+            return s;
+        }).join(', ')}</div>`;
+        html += `</div>`;
+
+        data.results.forEach((result, index) => {
+            const sourceIcon = result.source === 'Wikipedia' ? '📚' : '🦆';
+            html += `<div class="search-result-item">`;
+            html += `<div class="search-result-header">`;
+            html += `<span class="search-result-number">${index + 1}.</span>`;
+            html += `<span class="search-result-source" title="${result.source}">${sourceIcon}</span>`;
+            html += `<span class="search-result-title">${escapeHtml(result.title)}</span>`;
+            html += `</div>`;
+            html += `<div class="search-result-snippet">${escapeHtml(result.snippet)}</div>`;
+            if (result.url) {
+                html += `<div class="search-result-url">`;
+                html += `🔗 <a href="${escapeHtml(result.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(result.url)}</a>`;
+                html += `</div>`;
+            }
+            html += `</div>`;
+        });
+
+        html += `</div>`;
+        return html;
+    } catch (error) {
+        console.error('Error formatting search results:', error);
+        return escapeHtml(searchData).replace(/\n/g, '<br>');
+    }
 }
 
 // Create a thinking box (yellow collapsible section)
@@ -460,6 +511,7 @@ async function handleFileUpload(event) {
         // Process file based on type
         if (extension === 'pdf') {
             try {
+                addDebugLog(`Processing PDF file: ${file.name}`, 'file-operation', `Size: ${formatFileSize(fileSize)}`);
                 const pdfData = await extractPdfText(file);
                 currentFile = pdfData.text;
 
@@ -467,6 +519,7 @@ async function handleFileUpload(event) {
 
                 // Show success message
                 showErrorMessage(`✅ PDF loaded successfully (${pdfData.pageCount} pages)`, 3000);
+                addDebugLog(`PDF loaded successfully: ${pdfData.pageCount} pages`, 'file-operation', `File: ${file.name}\nSize: ${formatFileSize(fileSize)}\nContent length: ${currentFile.length} chars`);
             } catch (pdfError) {
                 hideLoadingIndicator();
                 console.error('PDF processing error:', pdfError);
@@ -496,6 +549,8 @@ async function handleFileUpload(event) {
                     if (!currentFile || currentFile.trim().length === 0) {
                         showErrorMessage('⚠️ Warning: File appears to be empty.', 4000);
                     }
+
+                    addDebugLog(`File loaded successfully`, 'file-operation', `File: ${file.name}\nType: ${extension}\nSize: ${formatFileSize(fileSize)}\nContent length: ${currentFile.length} chars`);
                 } catch (error) {
                     hideLoadingIndicator();
                     console.error('File processing error:', error);
@@ -528,6 +583,9 @@ async function handleFileUpload(event) {
 
 // Remove uploaded file
 function removeFile() {
+    const removedFileName = currentFileName;
+    addDebugLog(`Removing file: ${removedFileName}`, 'file-operation');
+
     currentFile = null;
     currentFileName = '';
     currentFileType = '';
@@ -730,6 +788,16 @@ function loadSettings() {
         toggleBtn.classList.add('collapsed');
         toggleIcon.textContent = '›';
     }
+
+    // Load debug mode state
+    const savedDebugMode = localStorage.getItem(STORAGE_KEYS.DEBUG_MODE);
+    if (savedDebugMode === 'true') {
+        debugMode = true;
+        const debugPanel = document.getElementById('debug-panel');
+        const debugCheckbox = document.getElementById('debug-mode');
+        if (debugPanel) debugPanel.style.display = 'flex';
+        if (debugCheckbox) debugCheckbox.checked = true;
+    }
 }
 
 // Save settings to localStorage
@@ -746,6 +814,7 @@ function saveSettings() {
     localStorage.setItem(STORAGE_KEYS.ACTIVE_TOOLS, JSON.stringify(activeTools));
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     localStorage.setItem(STORAGE_KEYS.SIDEBAR_COLLAPSED, isSidebarCollapsed);
+    localStorage.setItem(STORAGE_KEYS.DEBUG_MODE, debugMode);
 }
 
 // Add event listeners to save settings when they change
@@ -781,6 +850,82 @@ function toggleSidebar() {
     }
 
     saveSettings();
+}
+
+// Debug Mode Functions
+function toggleDebugMode() {
+    debugMode = !debugMode;
+    const debugPanel = document.getElementById('debug-panel');
+    const debugCheckbox = document.getElementById('debug-mode');
+
+    if (debugMode) {
+        debugPanel.style.display = 'flex';
+        addDebugLog('Debug mode enabled', 'system');
+        debugCheckbox.checked = true;
+    } else {
+        debugPanel.style.display = 'none';
+        debugCheckbox.checked = false;
+    }
+
+    saveSettings();
+}
+
+function toggleDebugPanel() {
+    debugPanelCollapsed = !debugPanelCollapsed;
+    const debugPanel = document.getElementById('debug-panel');
+
+    if (debugPanelCollapsed) {
+        debugPanel.classList.add('collapsed');
+    } else {
+        debugPanel.classList.remove('collapsed');
+    }
+}
+
+function clearDebugLogs() {
+    const debugLogs = document.getElementById('debug-logs');
+    debugLogs.innerHTML = '<div class="debug-entry"><div class="debug-entry-content" style="color: var(--text-secondary); font-style: italic;">Debug logs cleared</div></div>';
+}
+
+function addDebugLog(message, type = 'info', data = null) {
+    if (!debugMode) return;
+
+    const debugLogs = document.getElementById('debug-logs');
+    const timestamp = new Date().toLocaleTimeString();
+
+    const entry = document.createElement('div');
+    entry.className = `debug-entry ${type}`;
+
+    let typeLabel = type.toUpperCase();
+    if (type === 'tool-call') typeLabel = '🔧 TOOL CALL';
+    else if (type === 'api-response') typeLabel = '📡 API RESPONSE';
+    else if (type === 'file-operation') typeLabel = '📁 FILE OPERATION';
+    else if (type === 'error') typeLabel = '❌ ERROR';
+    else if (type === 'system') typeLabel = '⚙️ SYSTEM';
+
+    entry.innerHTML = `
+        <div class="debug-entry-timestamp">${timestamp}</div>
+        <div class="debug-entry-type">${typeLabel}</div>
+        <div class="debug-entry-content">${escapeHtml(message)}</div>
+    `;
+
+    if (data) {
+        const dataDiv = document.createElement('div');
+        dataDiv.className = 'debug-entry-content';
+        dataDiv.style.marginTop = '6px';
+        dataDiv.style.padding = '6px';
+        dataDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.2)';
+        dataDiv.style.borderRadius = '3px';
+        dataDiv.style.fontSize = '10px';
+        dataDiv.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        entry.appendChild(dataDiv);
+    }
+
+    debugLogs.insertBefore(entry, debugLogs.firstChild);
+
+    // Limit to 50 entries
+    while (debugLogs.children.length > 50) {
+        debugLogs.removeChild(debugLogs.lastChild);
+    }
 }
 
 // Toggle Tools Popup
@@ -1052,12 +1197,15 @@ async function webSearch(query) {
     try {
         let allResults = [];
         let searchSources = [];
+        const searchTimestamp = new Date().toISOString();
 
         // Primary: Try DuckDuckGo HTML search
         console.log('Searching DuckDuckGo for:', query);
         const ddgResults = await searchDuckDuckGo(query);
 
         if (ddgResults.length > 0) {
+            // Tag results with source
+            ddgResults.forEach(result => result.source = 'DuckDuckGo');
             allResults = allResults.concat(ddgResults);
             searchSources.push('DuckDuckGo');
         }
@@ -1068,6 +1216,8 @@ async function webSearch(query) {
             const wikiResults = await searchWikipedia(query);
 
             if (wikiResults.length > 0) {
+                // Tag results with source
+                wikiResults.forEach(result => result.source = 'Wikipedia');
                 allResults = allResults.concat(wikiResults);
                 searchSources.push('Wikipedia');
             }
@@ -1075,26 +1225,29 @@ async function webSearch(query) {
 
         // If still no results, return error message
         if (allResults.length === 0) {
-            return `No results found for "${query}". Try rephrasing your search query or being more specific.`;
+            return JSON.stringify({
+                query: query,
+                timestamp: searchTimestamp,
+                error: true,
+                message: `No results found for "${query}". Try rephrasing your search query or being more specific.`
+            });
         }
 
-        // Format results as text
-        let formattedResults = `Web Search Results for: "${query}"\n`;
-        formattedResults += `Sources: ${searchSources.join(', ')}\n\n`;
-
-        allResults.forEach((result, index) => {
-            formattedResults += `${index + 1}. ${result.title}\n`;
-            formattedResults += `   ${result.snippet}\n`;
-            if (result.url) {
-                formattedResults += `   URL: ${result.url}\n`;
-            }
-            formattedResults += '\n';
+        // Return structured data with timestamp
+        return JSON.stringify({
+            query: query,
+            timestamp: searchTimestamp,
+            sources: searchSources,
+            results: allResults
         });
-
-        return formattedResults;
     } catch (error) {
         console.error('Web search error:', error);
-        return `Error performing web search: ${error.message}`;
+        return JSON.stringify({
+            query: query,
+            timestamp: new Date().toISOString(),
+            error: true,
+            message: `Error performing web search: ${error.message}`
+        });
     }
 }
 
@@ -1252,23 +1405,38 @@ const AVAILABLE_TOOLS = [
 async function executeTool(toolName, parameters) {
     const tool = AVAILABLE_TOOLS.find(t => t.name === toolName);
     if (!tool) {
+        addDebugLog(`Tool "${toolName}" not found`, 'error');
         return `Error: Tool "${toolName}" not found`;
     }
 
     try {
+        // Log tool call in debug mode
+        addDebugLog(
+            `Executing tool: ${toolName}`,
+            'tool-call',
+            `Tool: ${toolName}\nParameters: ${JSON.stringify(parameters, null, 2)}`
+        );
+
+        let result;
         // Parameters now include both 'query' and 'instruction' for flexibility
         // Tools can access whichever parameter name they need
         if (toolName === 'file_analysis') {
             // For file_analysis, pass the full parameters object with instruction
-            return await tool.execute({ instruction: parameters.instruction || '' });
+            result = await tool.execute({ instruction: parameters.instruction || '' });
         } else if (toolName === 'web_search') {
             // For web_search, pass just the query string
-            return await tool.execute(parameters.query || parameters);
+            result = await tool.execute(parameters.query || parameters);
         } else {
             // For other tools, pass parameters as-is
-            return await tool.execute(parameters);
+            result = await tool.execute(parameters);
         }
+
+        // Log result in debug mode
+        addDebugLog(`Tool ${toolName} completed`, 'tool-call', `Result length: ${result.length} chars`);
+
+        return result;
     } catch (error) {
+        addDebugLog(`Tool execution error: ${error.message}`, 'error', error.stack);
         return `Error executing tool: ${error.message}`;
     }
 }
@@ -1533,26 +1701,36 @@ async function sendMessage() {
     let hasShownThinking = false;
 
     try {
+        const apiPayload = {
+            model: model,
+            messages: messages,
+            stream: true,
+            options: {
+                temperature: temperature,
+                num_predict: maxTokens,
+                top_p: topP,
+                top_k: topK,
+                repeat_penalty: repeatPenalty
+            }
+        };
+
+        // Log API request in debug mode
+        addDebugLog(
+            `API Request to ${ollamaUrl}/api/chat`,
+            'api-response',
+            `Model: ${model}\nMessages: ${messages.length}\nStreaming: true`
+        );
+
         const response = await fetch(`${ollamaUrl}/api/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                model: model,
-                messages: messages,
-                stream: true,
-                options: {
-                    temperature: temperature,
-                    num_predict: maxTokens,
-                    top_p: topP,
-                    top_k: topK,
-                    repeat_penalty: repeatPenalty
-                }
-            })
+            body: JSON.stringify(apiPayload)
         });
 
         if (!response.ok) {
+            addDebugLog(`API Error: ${response.status} ${response.statusText}`, 'error');
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
@@ -1766,10 +1944,21 @@ async function sendMessage() {
                 // Execute the tool
                 const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
 
+                // Format results based on tool type
+                let formattedResult;
+                let collapsibleTitle;
+
+                if (toolCall.name === 'web_search') {
+                    formattedResult = formatSearchResults(toolResult);
+                    collapsibleTitle = `🔍 Web Search Results: "${toolCall.query}"`;
+                } else {
+                    formattedResult = escapeHtml(toolResult).replace(/\n/g, '<br>');
+                    collapsibleTitle = `🔍 ${toolCall.name} Results`;
+                }
+
                 // Create collapsible search results (collapsed by default)
-                const formattedResult = escapeHtml(toolResult).replace(/\n/g, '<br>');
                 const collapsibleResults = createCollapsibleSection(
-                    `🔍 Search Results: ${toolCall.query}`,
+                    collapsibleTitle,
                     formattedResult,
                     true // collapsed by default
                 );
