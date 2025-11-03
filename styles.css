@@ -719,6 +719,32 @@ body {
     display: flex;
 }
 
+.file-ready-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: #4CAF50;
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 12px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border: 2px solid var(--bg-primary);
+}
+
+.file-ready-badge.active {
+    display: flex;
+}
+
+.file-button.has-file {
+    background-color: #4CAF50;
+    border: 2px solid #45a049;
+}
+
 .chat-input {
     flex: 1;
     padding: 10px 12px;
@@ -932,6 +958,39 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.tools-settings {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.tools-settings h4 {
+    color: var(--text-normal);
+    font-size: 12px;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.setting-item:hover {
+    background-color: var(--input-bg);
+}
+
+.setting-item:hover .tool-tooltip {
+    display: block;
 }
 
 .tool-item {
