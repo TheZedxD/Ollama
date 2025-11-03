@@ -13,6 +13,7 @@ let settings = {
 let currentImage = null; // Store current image data
 let currentFile = null; // Store current file data
 let currentFileName = ''; // Store current file name
+let currentFileType = ''; // Store current file type/extension
 
 // Model configurations
 const MODEL_CONFIGS = {
@@ -63,6 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     updateImageButtonVisibility();
     updateFileButtonVisibility();
     setupDragAndDrop();
+
+    // Initialize PDF.js worker
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
 });
 
 // Estimate token count (rough approximation: ~4 chars = 1 token)
@@ -253,6 +259,145 @@ function removeImage() {
     document.getElementById('image-input').value = '';
 }
 
+// Get file type icon based on extension
+function getFileIcon(extension) {
+    const ext = extension.toLowerCase();
+
+    // Code files
+    const codeIcons = {
+        'js': '📜', 'jsx': '⚛️', 'ts': '📘', 'tsx': '⚛️',
+        'py': '🐍', 'java': '☕', 'c': '©️', 'cpp': '⚙️',
+        'rs': '🦀', 'go': '🔷', 'rb': '💎', 'php': '🐘',
+        'swift': '🐦', 'kt': '🟣', 'scala': '🔴',
+        'html': '🌐', 'css': '🎨', 'vue': '💚'
+    };
+
+    // Data files
+    const dataIcons = {
+        'json': '📊', 'csv': '📈', 'xml': '📰',
+        'yaml': '⚙️', 'yml': '⚙️'
+    };
+
+    // Document files
+    const docIcons = {
+        'pdf': '📕', 'txt': '📄', 'md': '📝'
+    };
+
+    return codeIcons[ext] || dataIcons[ext] || docIcons[ext] || '📄';
+}
+
+// Show error message in UI
+function showErrorMessage(message, duration = 5000) {
+    // Create error notification element
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-notification';
+    errorDiv.innerHTML = `
+        <span class="error-icon">⚠️</span>
+        <span class="error-text">${message}</span>
+        <button class="error-close" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    // Add to container
+    const container = document.querySelector('.chat-input-container');
+    container.insertBefore(errorDiv, container.firstChild);
+
+    // Auto-remove after duration
+    if (duration > 0) {
+        setTimeout(() => {
+            if (errorDiv.parentElement) {
+                errorDiv.classList.add('fade-out');
+                setTimeout(() => errorDiv.remove(), 300);
+            }
+        }, duration);
+    }
+}
+
+// Show loading indicator
+function showLoadingIndicator(message = 'Processing file...') {
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'file-loading-indicator';
+    loadingDiv.className = 'file-loading-indicator';
+    loadingDiv.innerHTML = `
+        <div class="loading-spinner"></div>
+        <span class="loading-text">${message}</span>
+    `;
+
+    const filePreview = document.getElementById('file-preview');
+    filePreview.appendChild(loadingDiv);
+}
+
+// Hide loading indicator
+function hideLoadingIndicator() {
+    const loadingDiv = document.getElementById('file-loading-indicator');
+    if (loadingDiv) {
+        loadingDiv.remove();
+    }
+}
+
+// Extract text from PDF file
+async function extractPdfText(file) {
+    if (typeof pdfjsLib === 'undefined') {
+        throw new Error('PDF.js library not loaded. Cannot process PDF files.');
+    }
+
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        let fullText = '';
+        const numPages = pdf.numPages;
+
+        // Extract text from each page
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            fullText += `\n--- Page ${pageNum} ---\n${pageText}\n`;
+        }
+
+        return {
+            text: fullText.trim(),
+            pageCount: numPages
+        };
+    } catch (error) {
+        console.error('PDF extraction error:', error);
+        throw new Error(`Failed to extract PDF text: ${error.message}`);
+    }
+}
+
+// Get syntax highlighting language hint
+function getSyntaxLanguage(extension) {
+    const ext = extension.toLowerCase();
+
+    const langMap = {
+        'js': 'javascript',
+        'jsx': 'javascript',
+        'ts': 'typescript',
+        'tsx': 'typescript',
+        'py': 'python',
+        'rb': 'ruby',
+        'java': 'java',
+        'c': 'c',
+        'cpp': 'cpp',
+        'rs': 'rust',
+        'go': 'go',
+        'php': 'php',
+        'swift': 'swift',
+        'kt': 'kotlin',
+        'scala': 'scala',
+        'html': 'html',
+        'css': 'css',
+        'vue': 'vue',
+        'json': 'json',
+        'xml': 'xml',
+        'yaml': 'yaml',
+        'yml': 'yaml',
+        'md': 'markdown'
+    };
+
+    return langMap[ext] || 'text';
+}
+
 // Update file button visibility based on file analysis tool
 function updateFileButtonVisibility() {
     const fileButton = document.getElementById('file-button');
@@ -272,28 +417,97 @@ async function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Check file size (limit to 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-        alert('File size too large. Maximum size is 10MB.');
-        return;
-    }
+    try {
+        // Get file extension
+        const extension = file.name.split('.').pop().toLowerCase();
+        currentFileName = file.name;
+        currentFileType = extension;
 
-    currentFileName = file.name;
+        // File size validation with warnings
+        const fileSize = file.size;
+        const maxSize = 10 * 1024 * 1024; // 10MB
 
-    // Read file based on type
-    const reader = new FileReader();
+        // Show warning for large files (> 5MB)
+        if (fileSize > 5 * 1024 * 1024 && fileSize <= maxSize) {
+            const sizeInMB = (fileSize / (1024 * 1024)).toFixed(2);
+            showErrorMessage(`⚠️ Large file detected (${sizeInMB}MB). Processing may take longer.`, 4000);
+        }
 
-    reader.onload = function(e) {
-        currentFile = e.target.result;
+        // Block files over 10MB
+        if (fileSize > maxSize) {
+            const sizeInMB = (fileSize / (1024 * 1024)).toFixed(2);
+            showErrorMessage(`❌ File too large (${sizeInMB}MB). Maximum size is 10MB.`, 6000);
+            event.target.value = ''; // Reset input
+            return;
+        }
 
-        // Show preview
+        // Show preview immediately with icon
         const preview = document.getElementById('file-preview');
         const fileName = document.getElementById('file-name');
-        const fileSize = document.getElementById('file-size');
+        const fileSizeDisplay = document.getElementById('file-size');
+        const fileIcon = preview.querySelector('.file-icon');
 
         fileName.textContent = file.name;
-        fileSize.textContent = formatFileSize(file.size);
+        fileSizeDisplay.textContent = formatFileSize(fileSize);
+        fileIcon.textContent = getFileIcon(extension);
         preview.style.display = 'flex';
+
+        // Show loading indicator for large files or PDFs
+        if (fileSize > 1024 * 1024 || extension === 'pdf') {
+            showLoadingIndicator(extension === 'pdf' ? 'Extracting PDF text...' : 'Reading file...');
+        }
+
+        // Process file based on type
+        if (extension === 'pdf') {
+            try {
+                const pdfData = await extractPdfText(file);
+                currentFile = pdfData.text;
+
+                hideLoadingIndicator();
+
+                // Show success message
+                showErrorMessage(`✅ PDF loaded successfully (${pdfData.pageCount} pages)`, 3000);
+            } catch (pdfError) {
+                hideLoadingIndicator();
+                console.error('PDF processing error:', pdfError);
+                showErrorMessage(`❌ PDF Error: ${pdfError.message}`, 6000);
+                removeFile();
+                event.target.value = '';
+                return;
+            }
+        } else {
+            // Read as text for other file types
+            const reader = new FileReader();
+
+            reader.onerror = function(e) {
+                hideLoadingIndicator();
+                console.error('File reading error:', e);
+                showErrorMessage('❌ Failed to read file. Please try again.', 5000);
+                removeFile();
+                event.target.value = '';
+            };
+
+            reader.onload = function(e) {
+                try {
+                    currentFile = e.target.result;
+                    hideLoadingIndicator();
+
+                    // Validate that file has content
+                    if (!currentFile || currentFile.trim().length === 0) {
+                        showErrorMessage('⚠️ Warning: File appears to be empty.', 4000);
+                    }
+                } catch (error) {
+                    hideLoadingIndicator();
+                    console.error('File processing error:', error);
+                    showErrorMessage(`❌ Error processing file: ${error.message}`, 5000);
+                    removeFile();
+                    event.target.value = '';
+                }
+            };
+
+            // Read as text for all supported file types
+            reader.readAsText(file);
+        }
 
         // Update file button visual indicators
         const fileButton = document.getElementById('file-button');
@@ -302,19 +516,27 @@ async function handleFileUpload(event) {
         fileButton.classList.add('has-file');
         fileButton.title = `File ready: ${file.name}`;
         fileReadyBadge.classList.add('active');
-    };
 
-    // Read as text for all supported file types
-    reader.readAsText(file);
+    } catch (error) {
+        hideLoadingIndicator();
+        console.error('File upload error:', error);
+        showErrorMessage(`❌ Upload failed: ${error.message}`, 5000);
+        removeFile();
+        event.target.value = '';
+    }
 }
 
 // Remove uploaded file
 function removeFile() {
     currentFile = null;
     currentFileName = '';
+    currentFileType = '';
     const preview = document.getElementById('file-preview');
     preview.style.display = 'none';
     document.getElementById('file-input').value = '';
+
+    // Remove any loading indicators
+    hideLoadingIndicator();
 
     // Reset file button visual indicators
     const fileButton = document.getElementById('file-button');
@@ -661,19 +883,24 @@ async function checkConnection() {
     } catch (error) {
         statusDot.classList.remove('connected');
 
-        // Provide more detailed error messages
+        // Provide more detailed error messages with troubleshooting
         if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
             statusText.textContent = 'CORS Error';
-            console.error('CORS error - Ollama needs CORS enabled. See README for setup instructions.');
+            console.error('CORS error - Ollama needs CORS enabled.');
             console.error('Error details:', error);
 
-            // Show user-friendly error message
+            // Show user-friendly error message with detailed troubleshooting
             if (document.getElementById('chat-messages').children.length === 0) {
-                addMessage('system', `⚠️ **Connection Failed: CORS Error**\n\nOllama is blocking the connection due to CORS (Cross-Origin Resource Sharing) restrictions.\n\n**To fix this, you need to run Ollama with CORS enabled:**\n\n**On macOS/Linux:**\n\`\`\`bash\nOLLAMA_ORIGINS="*" ollama serve\n\`\`\`\n\n**On Windows (PowerShell):**\n\`\`\`powershell\n$env:OLLAMA_ORIGINS="*"\nollama serve\n\`\`\`\n\n**On Windows (CMD):**\n\`\`\`cmd\nset OLLAMA_ORIGINS=*\nollama serve\n\`\`\`\n\nThen click **Refresh Models** to reconnect.`);
+                addMessage('system', `⚠️ **Connection Failed: CORS Error**\n\nOllama is blocking the connection due to CORS (Cross-Origin Resource Sharing) restrictions.\n\n**Quick Fix Guide:**\n\n**Option 1: Start Ollama with CORS Enabled**\n\`\`\`bash\n# macOS/Linux\nOLLAMA_ORIGINS="*" ollama serve\n\n# Windows PowerShell\n$env:OLLAMA_ORIGINS="*"\nollama serve\n\n# Windows CMD\nset OLLAMA_ORIGINS=*\nollama serve\n\`\`\`\n\n**Option 2: Set Environment Variable Permanently**\n\`\`\`bash\n# macOS/Linux (add to ~/.bashrc or ~/.zshrc)\nexport OLLAMA_ORIGINS="*"\n\n# Windows (System Properties > Environment Variables)\nVariable: OLLAMA_ORIGINS\nValue: *\n\`\`\`\n\n**Troubleshooting Steps:**\n1. Stop any running Ollama processes\n2. Start Ollama with the environment variable set\n3. Verify Ollama is running: \`ollama list\`\n4. Click **Refresh Models** button above\n5. If still failing, try restarting your browser\n\n**Common Issues:**\n- Firewall blocking port 11434\n- Ollama not running as a service\n- Multiple Ollama instances running\n- Browser cache (try hard refresh: Ctrl+Shift+R)\n\n**Need Help?** Visit: https://github.com/ollama/ollama/blob/main/docs/faq.md#how-do-i-configure-ollama-server`);
             }
         } else {
             statusText.textContent = 'Connection Failed';
             console.error('Connection error:', error);
+
+            // Show generic connection error
+            if (document.getElementById('chat-messages').children.length === 0) {
+                addMessage('system', `⚠️ **Connection Failed**\n\nUnable to connect to Ollama server.\n\n**Error:** ${error.message}\n\n**Checklist:**\n- Is Ollama installed? Download: https://ollama.ai\n- Is Ollama running? Check with: \`ollama list\`\n- Is the URL correct? Currently: \`${ollamaUrl}\`\n- Try clicking **Refresh Models** after starting Ollama`);
+            }
         }
         return false;
     }
@@ -733,12 +960,12 @@ async function refreshModels() {
     } catch (error) {
         console.error('Error fetching models:', error);
 
-        // Provide detailed error information
+        // Provide detailed error information with troubleshooting steps
         if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-            // CORS error - checkConnection will handle the message
-            checkConnection();
+            // CORS error - show detailed troubleshooting
+            addMessage('system', `⚠️ **CORS Configuration Error**\n\nCannot connect to Ollama due to CORS (Cross-Origin Resource Sharing) restrictions.\n\n**Quick Fix:**\n\n**Option 1: Environment Variable (Recommended)**\n\`\`\`bash\n# macOS/Linux\nOLLAMA_ORIGINS="*" ollama serve\n\n# Windows PowerShell\n$env:OLLAMA_ORIGINS="*"\nollama serve\n\n# Windows CMD\nset OLLAMA_ORIGINS=*\nollama serve\n\`\`\`\n\n**Option 2: Restart Ollama Service**\n\`\`\`bash\n# Stop Ollama\nkillall ollama  # or: pkill ollama\n\n# Start with CORS enabled\nOLLAMA_ORIGINS="*" ollama serve\n\`\`\`\n\n**Troubleshooting:**\n- Make sure Ollama is running: \`ollama list\`\n- Check the URL: \`${ollamaUrl}\`\n- Try restarting your browser\n- Verify firewall settings\n\n**After fixing**, click **Refresh Models** to reconnect.`);
         } else {
-            addMessage('system', `⚠️ **Connection Error**\n\nCould not connect to Ollama at \`${ollamaUrl}\`\n\nPlease make sure:\n1. Ollama is installed and running\n2. Ollama is started with CORS enabled (see error message above for instructions)\n3. The URL is correct (default: http://localhost:11434)`);
+            addMessage('system', `⚠️ **Connection Error**\n\nCould not connect to Ollama at \`${ollamaUrl}\`\n\n**Checklist:**\n1. ✓ Ollama is installed and running\n2. ✓ Ollama started with CORS enabled\n3. ✓ The URL is correct (default: http://localhost:11434)\n4. ✓ No firewall blocking the connection\n\n**Error Details:** ${error.message}`);
         }
     }
 }
@@ -886,57 +1113,112 @@ async function analyzeFile(params) {
         // Get the optional instruction parameter
         const instruction = params && params.instruction ? params.instruction : '';
 
-        const fileExtension = currentFileName.split('.').pop().toLowerCase();
+        const fileExtension = currentFileType || currentFileName.split('.').pop().toLowerCase();
+        const syntaxLang = getSyntaxLanguage(fileExtension);
+
         let analysis = `File Analysis Results\n`;
-        analysis += `Filename: ${currentFileName}\n`;
-        analysis += `File Type: ${fileExtension.toUpperCase()}\n`;
+        analysis += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        analysis += `📄 Filename: ${currentFileName}\n`;
+        analysis += `📋 File Type: ${fileExtension.toUpperCase()}\n`;
+        analysis += `🎨 Syntax: ${syntaxLang}\n`;
+        analysis += `📏 Size: ${formatFileSize(currentFile.length)}\n`;
 
         if (instruction) {
-            analysis += `Analysis Instruction: ${instruction}\n`;
+            analysis += `📝 Instruction: ${instruction}\n`;
         }
 
-        analysis += `\n`;
+        analysis += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
         // Parse based on file type
         if (fileExtension === 'json') {
             try {
                 const parsed = JSON.parse(currentFile);
-                analysis += `Content Type: JSON\n`;
-                analysis += `Structure: ${JSON.stringify(parsed, null, 2)}\n`;
+                analysis += `✅ Content Type: JSON (Valid)\n`;
+                analysis += `🔍 Structure Analysis:\n`;
+                analysis += `  - Top-level type: ${Array.isArray(parsed) ? 'Array' : 'Object'}\n`;
+
+                if (Array.isArray(parsed)) {
+                    analysis += `  - Array length: ${parsed.length}\n`;
+                } else {
+                    analysis += `  - Object keys: ${Object.keys(parsed).length}\n`;
+                    analysis += `  - Keys: ${Object.keys(parsed).join(', ')}\n`;
+                }
+
+                analysis += `\n📊 Formatted JSON:\n`;
+                analysis += `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\`\n`;
             } catch (e) {
-                analysis += `Error: Invalid JSON format - ${e.message}\n`;
-                analysis += `Raw content (first 500 chars): ${currentFile.substring(0, 500)}\n`;
+                analysis += `❌ Error: Invalid JSON format\n`;
+                analysis += `  - ${e.message}\n\n`;
+                analysis += `📄 Raw content (first 500 chars):\n${currentFile.substring(0, 500)}\n`;
             }
         } else if (fileExtension === 'csv') {
             const lines = currentFile.split('\n').filter(line => line.trim());
-            analysis += `Content Type: CSV\n`;
-            analysis += `Total Rows: ${lines.length}\n`;
+            analysis += `✅ Content Type: CSV (Comma-Separated Values)\n`;
+            analysis += `📊 Data Analysis:\n`;
+            analysis += `  - Total rows: ${lines.length}\n`;
 
             if (lines.length > 0) {
-                analysis += `Preview (first 10 lines):\n${lines.slice(0, 10).join('\n')}\n`;
+                const columns = lines[0].split(',').length;
+                analysis += `  - Columns per row: ${columns}\n\n`;
+                analysis += `📋 Preview (first 10 lines):\n`;
+                analysis += `\`\`\`csv\n${lines.slice(0, 10).join('\n')}\n\`\`\`\n`;
             } else {
-                analysis += `Warning: File appears to be empty\n`;
+                analysis += `\n⚠️ Warning: File appears to be empty\n`;
+            }
+        } else if (fileExtension === 'pdf') {
+            const lines = currentFile.split('\n');
+            const words = currentFile.split(/\s+/).filter(w => w.length > 0);
+            analysis += `✅ Content Type: PDF (Extracted Text)\n`;
+            analysis += `📊 Content Analysis:\n`;
+            analysis += `  - Total lines: ${lines.length}\n`;
+            analysis += `  - Total words: ${words.length}\n`;
+            analysis += `  - Total characters: ${currentFile.length}\n\n`;
+
+            if (currentFile.length > 0) {
+                analysis += `📄 Extracted Text:\n${currentFile}\n`;
+            } else {
+                analysis += `⚠️ Warning: No text could be extracted from PDF\n`;
+            }
+        } else if (['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'rs', 'go', 'rb', 'php', 'swift', 'kt', 'scala', 'vue'].includes(fileExtension)) {
+            // Code files with syntax highlighting hints
+            const lines = currentFile.split('\n');
+            const words = currentFile.split(/\s+/).filter(w => w.length > 0);
+
+            analysis += `✅ Content Type: ${syntaxLang.toUpperCase()} Code\n`;
+            analysis += `📊 Code Analysis:\n`;
+            analysis += `  - Total lines: ${lines.length}\n`;
+            analysis += `  - Non-empty lines: ${lines.filter(l => l.trim()).length}\n`;
+            analysis += `  - Total words: ${words.length}\n`;
+            analysis += `  - Total characters: ${currentFile.length}\n`;
+            analysis += `  - Syntax highlighting: ${syntaxLang}\n\n`;
+
+            if (currentFile.length > 0) {
+                analysis += `💻 Source Code:\n`;
+                analysis += `\`\`\`${syntaxLang}\n${currentFile}\n\`\`\`\n`;
+            } else {
+                analysis += `⚠️ Warning: File appears to be empty\n`;
             }
         } else {
             // Plain text files
             const lines = currentFile.split('\n');
             const words = currentFile.split(/\s+/).filter(w => w.length > 0);
-            analysis += `Content Type: Text\n`;
-            analysis += `Total Lines: ${lines.length}\n`;
-            analysis += `Total Words: ${words.length}\n`;
-            analysis += `Total Characters: ${currentFile.length}\n\n`;
+            analysis += `✅ Content Type: Text Document\n`;
+            analysis += `📊 Content Analysis:\n`;
+            analysis += `  - Total lines: ${lines.length}\n`;
+            analysis += `  - Total words: ${words.length}\n`;
+            analysis += `  - Total characters: ${currentFile.length}\n\n`;
 
             if (currentFile.length > 0) {
-                analysis += `Content:\n${currentFile}\n`;
+                analysis += `📄 Content:\n${currentFile}\n`;
             } else {
-                analysis += `Warning: File appears to be empty\n`;
+                analysis += `⚠️ Warning: File appears to be empty\n`;
             }
         }
 
         return analysis;
     } catch (error) {
         console.error('File analysis error:', error);
-        return `Error analyzing file: ${error.message}. Please ensure the file is properly uploaded and try again.`;
+        return `❌ Error analyzing file: ${error.message}\n\nPlease ensure the file is properly uploaded and try again.`;
     }
 }
 
@@ -955,7 +1237,7 @@ const AVAILABLE_TOOLS = [
     },
     {
         name: 'file_analysis',
-        description: 'Analyze the content of an uploaded file (TXT, JSON, CSV, MD, code files)',
+        description: 'Analyze the content of an uploaded file (TXT, PDF, JSON, CSV, MD, JS, TS, PY, JAVA, C, CPP, RS, GO, and more code files)',
         parameters: {
             instruction: {
                 type: 'string',
@@ -1102,13 +1384,15 @@ Examples:
 
     // Only show file_analysis tool if a file is actually uploaded
     if (activeTools['file-analysis'] && currentFile) {
-        toolsPrompt += `**file_analysis** - Analyze the content of the uploaded file "${currentFileName}".
+        toolsPrompt += `**file_analysis** - Analyze the content of the uploaded file "${currentFileName}" (${currentFileType.toUpperCase()}).
+Supports: PDF, JSON, CSV, TXT, MD, JS, TS, PY, JAVA, C, CPP, RS, GO, and more.
 Syntax: <tool>file_analysis("optional instruction")</tool>
 
 Examples:
 - <tool>file_analysis("summarize this file")</tool>
 - <tool>file_analysis("extract key points")</tool>
 - <tool>file_analysis("analyze the data structure")</tool>
+- <tool>file_analysis("explain what this code does")</tool>
 
 `;
     }

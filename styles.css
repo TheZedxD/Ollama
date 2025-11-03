@@ -1298,3 +1298,133 @@ body {
 [data-theme="light"] .thinking-header:hover {
     background-color: rgba(240, 173, 78, 0.35);
 }
+
+/* Error Notification */
+.error-notification {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    background-color: rgba(255, 68, 68, 0.1);
+    border: 2px solid #ff4444;
+    border-left: 4px solid #ff4444;
+    border-radius: 4px;
+    animation: slideDown 0.3s ease-out;
+}
+
+.error-notification .error-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.error-notification .error-text {
+    flex: 1;
+    color: var(--text-normal);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.error-notification .error-close {
+    width: 24px;
+    height: 24px;
+    background-color: rgba(255, 68, 68, 0.2);
+    color: #ff4444;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.3s;
+}
+
+.error-notification .error-close:hover {
+    background-color: rgba(255, 68, 68, 0.4);
+}
+
+.error-notification.fade-out {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* File Loading Indicator */
+.file-loading-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    background-color: rgba(0, 212, 255, 0.1);
+    border: 1px solid var(--text-secondary);
+    border-radius: 4px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--text-secondary);
+    border-top: 2px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.loading-text {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Success notification variant */
+.error-notification.success {
+    background-color: rgba(76, 175, 80, 0.1);
+    border-color: #4CAF50;
+}
+
+.error-notification.success .error-icon {
+    color: #4CAF50;
+}
+
+.error-notification.success .error-close {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+}
+
+.error-notification.success .error-close:hover {
+    background-color: rgba(76, 175, 80, 0.4);
+}
+
+/* Warning notification variant */
+.error-notification.warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-color: #FFC107;
+}
+
+.error-notification.warning .error-icon {
+    color: #FFC107;
+}
+
+.error-notification.warning .error-close {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #FFC107;
+}
+
+.error-notification.warning .error-close:hover {
+    background-color: rgba(255, 193, 7, 0.4);
+}
