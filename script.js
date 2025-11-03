@@ -974,13 +974,17 @@ async function executeTool(toolName, parameters) {
     }
 
     try {
-        // Handle different parameter formats for different tools
+        // Parameters now include both 'query' and 'instruction' for flexibility
+        // Tools can access whichever parameter name they need
         if (toolName === 'file_analysis') {
-            // For file_analysis, pass the instruction (or query as instruction)
-            return await tool.execute({ instruction: parameters.instruction || parameters.query || '' });
-        } else {
-            // For other tools (like web_search), pass the query
+            // For file_analysis, pass the full parameters object with instruction
+            return await tool.execute({ instruction: parameters.instruction || '' });
+        } else if (toolName === 'web_search') {
+            // For web_search, pass just the query string
             return await tool.execute(parameters.query || parameters);
+        } else {
+            // For other tools, pass parameters as-is
+            return await tool.execute(parameters);
         }
     } catch (error) {
         return `Error executing tool: ${error.message}`;
@@ -991,26 +995,39 @@ async function executeTool(toolName, parameters) {
 function parseToolCalls(text) {
     const toolCalls = [];
 
+    // Helper function to create a flexible parameter object
+    // Stores the value as both 'query' and 'instruction' for compatibility with different tools
+    function createParameters(value) {
+        return {
+            query: value,
+            instruction: value
+        };
+    }
+
     // Pattern 1: <tool>web_search("query here")</tool> - with double quotes
     const pattern1 = /<tool>(\w+)\("([^"]+)"\)<\/tool>/gi;
     let match;
 
     while ((match = pattern1.exec(text)) !== null) {
+        const toolName = match[1].toLowerCase();
+        const paramValue = match[2];
         toolCalls.push({
-            name: match[1].toLowerCase(),
-            query: match[2]
+            name: toolName,
+            ...createParameters(paramValue)
         });
     }
 
     // Pattern 2: <tool>web_search('query here')</tool> - with single quotes
     const pattern2 = /<tool>(\w+)\('([^']+)'\)<\/tool>/gi;
     while ((match = pattern2.exec(text)) !== null) {
+        const toolName = match[1].toLowerCase();
+        const paramValue = match[2];
         // Check if this exact call wasn't already added by pattern1
-        const exists = toolCalls.some(tc => tc.name === match[1].toLowerCase() && tc.query === match[2]);
+        const exists = toolCalls.some(tc => tc.name === toolName && tc.query === paramValue);
         if (!exists) {
             toolCalls.push({
-                name: match[1].toLowerCase(),
-                query: match[2]
+                name: toolName,
+                ...createParameters(paramValue)
             });
         }
     }
@@ -1018,12 +1035,13 @@ function parseToolCalls(text) {
     // Pattern 3: <tool>web_search(query here)</tool> - without quotes
     const pattern3 = /<tool>(\w+)\(([^)]+)\)<\/tool>/gi;
     while ((match = pattern3.exec(text)) !== null) {
-        const query = match[2].replace(/^["']|["']$/g, '').trim(); // Remove quotes if present
-        const exists = toolCalls.some(tc => tc.name === match[1].toLowerCase() && tc.query === query);
+        const toolName = match[1].toLowerCase();
+        const paramValue = match[2].replace(/^["']|["']$/g, '').trim(); // Remove quotes if present
+        const exists = toolCalls.some(tc => tc.name === toolName && tc.query === paramValue);
         if (!exists) {
             toolCalls.push({
-                name: match[1].toLowerCase(),
-                query: query
+                name: toolName,
+                ...createParameters(paramValue)
             });
         }
     }
@@ -1035,6 +1053,12 @@ function parseToolCalls(text) {
             const toolCall = JSON.parse(match[1]);
             if (toolCall.name) {
                 toolCall.name = toolCall.name.toLowerCase();
+            }
+            // Ensure both query and instruction parameters exist for flexibility
+            if (toolCall.query && !toolCall.instruction) {
+                toolCall.instruction = toolCall.query;
+            } else if (toolCall.instruction && !toolCall.query) {
+                toolCall.query = toolCall.instruction;
             }
             toolCalls.push(toolCall);
         } catch (e) {
