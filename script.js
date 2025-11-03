@@ -820,14 +820,28 @@ async function webSearch(query) {
 // File analysis function
 async function analyzeFile(params) {
     try {
-        if (!currentFile || !currentFileName) {
-            return 'No file has been uploaded. Please upload a file first.';
+        // Validate that a file has been uploaded
+        if (!currentFile) {
+            return 'Error: No file has been uploaded. Please upload a file using the file upload button (📎) before requesting file analysis.';
         }
+
+        if (!currentFileName) {
+            return 'Error: File name is missing. Please re-upload the file.';
+        }
+
+        // Get the optional instruction parameter
+        const instruction = params && params.instruction ? params.instruction : '';
 
         const fileExtension = currentFileName.split('.').pop().toLowerCase();
         let analysis = `File Analysis Results\n`;
         analysis += `Filename: ${currentFileName}\n`;
-        analysis += `File Type: ${fileExtension.toUpperCase()}\n\n`;
+        analysis += `File Type: ${fileExtension.toUpperCase()}\n`;
+
+        if (instruction) {
+            analysis += `Analysis Instruction: ${instruction}\n`;
+        }
+
+        analysis += `\n`;
 
         // Parse based on file type
         if (fileExtension === 'json') {
@@ -837,12 +851,18 @@ async function analyzeFile(params) {
                 analysis += `Structure: ${JSON.stringify(parsed, null, 2)}\n`;
             } catch (e) {
                 analysis += `Error: Invalid JSON format - ${e.message}\n`;
+                analysis += `Raw content (first 500 chars): ${currentFile.substring(0, 500)}\n`;
             }
         } else if (fileExtension === 'csv') {
-            const lines = currentFile.split('\n');
+            const lines = currentFile.split('\n').filter(line => line.trim());
             analysis += `Content Type: CSV\n`;
             analysis += `Total Rows: ${lines.length}\n`;
-            analysis += `Preview (first 10 lines):\n${lines.slice(0, 10).join('\n')}\n`;
+
+            if (lines.length > 0) {
+                analysis += `Preview (first 10 lines):\n${lines.slice(0, 10).join('\n')}\n`;
+            } else {
+                analysis += `Warning: File appears to be empty\n`;
+            }
         } else {
             // Plain text files
             const lines = currentFile.split('\n');
@@ -851,12 +871,18 @@ async function analyzeFile(params) {
             analysis += `Total Lines: ${lines.length}\n`;
             analysis += `Total Words: ${words.length}\n`;
             analysis += `Total Characters: ${currentFile.length}\n\n`;
-            analysis += `Content:\n${currentFile}\n`;
+
+            if (currentFile.length > 0) {
+                analysis += `Content:\n${currentFile}\n`;
+            } else {
+                analysis += `Warning: File appears to be empty\n`;
+            }
         }
 
         return analysis;
     } catch (error) {
-        return `Error analyzing file: ${error.message}`;
+        console.error('File analysis error:', error);
+        return `Error analyzing file: ${error.message}. Please ensure the file is properly uploaded and try again.`;
     }
 }
 
@@ -894,7 +920,14 @@ async function executeTool(toolName, parameters) {
     }
 
     try {
-        return await tool.execute(parameters.query || parameters);
+        // Handle different parameter formats for different tools
+        if (toolName === 'file_analysis') {
+            // For file_analysis, pass the instruction (or query as instruction)
+            return await tool.execute({ instruction: parameters.instruction || parameters.query || '' });
+        } else {
+            // For other tools (like web_search), pass the query
+            return await tool.execute(parameters.query || parameters);
+        }
     } catch (error) {
         return `Error executing tool: ${error.message}`;
     }
