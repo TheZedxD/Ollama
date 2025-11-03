@@ -7,6 +7,9 @@ let activeTools = {
     'web-search': false,
     'file-analysis': false
 };
+let settings = {
+    'auto-clear-file': true // Auto-clear file after analysis by default
+};
 let currentImage = null; // Store current image data
 let currentFile = null; // Store current file data
 let currentFileName = ''; // Store current file name
@@ -48,6 +51,7 @@ const STORAGE_KEYS = {
     SYSTEM_PROMPT: 'ollama_system_prompt',
     SELECTED_MODEL: 'ollama_selected_model',
     ACTIVE_TOOLS: 'ollama_active_tools',
+    SETTINGS: 'ollama_settings',
     SIDEBAR_COLLAPSED: 'ollama_sidebar_collapsed'
 };
 
@@ -290,6 +294,14 @@ async function handleFileUpload(event) {
         fileName.textContent = file.name;
         fileSize.textContent = formatFileSize(file.size);
         preview.style.display = 'flex';
+
+        // Update file button visual indicators
+        const fileButton = document.getElementById('file-button');
+        const fileReadyBadge = document.getElementById('file-ready-badge');
+
+        fileButton.classList.add('has-file');
+        fileButton.title = `File ready: ${file.name}`;
+        fileReadyBadge.classList.add('active');
     };
 
     // Read as text for all supported file types
@@ -303,6 +315,14 @@ function removeFile() {
     const preview = document.getElementById('file-preview');
     preview.style.display = 'none';
     document.getElementById('file-input').value = '';
+
+    // Reset file button visual indicators
+    const fileButton = document.getElementById('file-button');
+    const fileReadyBadge = document.getElementById('file-ready-badge');
+
+    fileButton.classList.remove('has-file');
+    fileButton.title = 'Upload a file for analysis';
+    fileReadyBadge.classList.remove('active');
 }
 
 // Format file size for display
@@ -458,6 +478,25 @@ function loadSettings() {
         }
     }
 
+    // Load settings
+    const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    if (savedSettings) {
+        try {
+            settings = JSON.parse(savedSettings);
+            // Update UI for settings
+            Object.keys(settings).forEach(settingName => {
+                if (settings[settingName]) {
+                    const checkbox = document.getElementById('setting-' + settingName);
+                    if (checkbox) {
+                        checkbox.classList.add('checked');
+                    }
+                }
+            });
+        } catch (e) {
+            console.error('Error loading settings:', e);
+        }
+    }
+
     // Load sidebar collapsed state
     const savedSidebarState = localStorage.getItem(STORAGE_KEYS.SIDEBAR_COLLAPSED);
     if (savedSidebarState === 'true') {
@@ -483,6 +522,7 @@ function saveSettings() {
     localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPT, document.getElementById('system-prompt').value);
     localStorage.setItem(STORAGE_KEYS.SELECTED_MODEL, document.getElementById('model-select').value);
     localStorage.setItem(STORAGE_KEYS.ACTIVE_TOOLS, JSON.stringify(activeTools));
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     localStorage.setItem(STORAGE_KEYS.SIDEBAR_COLLAPSED, isSidebarCollapsed);
 }
 
@@ -545,6 +585,20 @@ function toggleTool(toolName) {
 
     // Update badge
     updateToolsBadge();
+    saveSettings();
+}
+
+// Toggle Setting
+function toggleSetting(settingName) {
+    settings[settingName] = !settings[settingName];
+    const checkbox = document.getElementById('setting-' + settingName);
+
+    if (settings[settingName]) {
+        checkbox.classList.add('checked');
+    } else {
+        checkbox.classList.remove('checked');
+    }
+
     saveSettings();
 }
 
@@ -999,7 +1053,8 @@ function getToolsPrompt() {
     if (activeTools['web-search']) {
         enabledTools.push('web_search');
     }
-    if (activeTools['file-analysis']) {
+    // Only include file_analysis if the tool is enabled AND a file is uploaded
+    if (activeTools['file-analysis'] && currentFile) {
         enabledTools.push('file_analysis');
     }
 
@@ -1021,8 +1076,9 @@ Examples:
 `;
     }
 
-    if (activeTools['file-analysis']) {
-        toolsPrompt += `**file_analysis** - Analyze the content of an uploaded file. The user must upload a file first using the file upload button (📎).
+    // Only show file_analysis tool if a file is actually uploaded
+    if (activeTools['file-analysis'] && currentFile) {
+        toolsPrompt += `**file_analysis** - Analyze the content of the uploaded file "${currentFileName}".
 Syntax: <tool>file_analysis("optional instruction")</tool>
 
 Examples:
@@ -1417,6 +1473,11 @@ async function sendMessage() {
 
                 // Add tool result to history
                 chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
+
+                // If file_analysis was executed and auto-clear is enabled, clear the file
+                if (toolCall.name === 'file_analysis' && settings['auto-clear-file']) {
+                    removeFile();
+                }
             }
 
             // Now continue the conversation - let the AI synthesize the results

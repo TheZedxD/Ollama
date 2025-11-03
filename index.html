@@ -108,6 +108,14 @@
                             <div class="tool-tooltip">Analyze uploaded files (TXT, PDF, JSON, CSV, MD)</div>
                         </div>
                     </div>
+                    <div class="tools-settings">
+                        <h4>File Analysis Settings</h4>
+                        <div class="setting-item" onclick="toggleSetting('auto-clear-file')">
+                            <div class="tool-checkbox" id="setting-auto-clear-file"></div>
+                            <div class="tool-label">Auto-clear after analysis</div>
+                            <div class="tool-tooltip">Automatically remove the file after successful analysis</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="typing-indicator" id="typing-indicator">AI is thinking...</div>
@@ -139,8 +147,9 @@
                     </button>
                     <input type="file" id="image-input" accept="image/*" onchange="handleImageUpload(event)" style="display: none;">
                     <!-- File Upload Button (shown when file analysis is enabled) -->
-                    <button class="file-button" id="file-button" onclick="document.getElementById('file-input').click()" style="display: none;">
+                    <button class="file-button" id="file-button" onclick="document.getElementById('file-input').click()" style="display: none;" title="Upload a file for analysis">
                         📎
+                        <span class="file-ready-badge" id="file-ready-badge" style="display: none;">✓</span>
                     </button>
                     <input type="file" id="file-input" accept=".txt,.pdf,.json,.csv,.md,.js,.py,.java,.c,.cpp,.html,.css,.xml,.yaml,.yml" onchange="handleFileUpload(event)" style="display: none;">
                     <textarea
