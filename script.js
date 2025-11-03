@@ -17,6 +17,27 @@ let currentFile = null; // Store current file data
 let currentFileName = ''; // Store current file name
 let currentFileType = ''; // Store current file type/extension
 
+// Enhanced state management for file uploads and tools
+let appState = {
+    file: {
+        isUploaded: false,
+        isProcessing: false,
+        isAnalyzed: false,
+        lastAnalysisType: null,
+        uploadTimestamp: null,
+        metadata: {
+            name: '',
+            type: '',
+            size: 0,
+            extension: ''
+        }
+    },
+    tools: {
+        available: [],
+        active: []
+    }
+};
+
 // Model configurations
 const MODEL_CONFIGS = {
     'llama3.2:3b': {
@@ -56,7 +77,8 @@ const STORAGE_KEYS = {
     ACTIVE_TOOLS: 'ollama_active_tools',
     SETTINGS: 'ollama_settings',
     SIDEBAR_COLLAPSED: 'ollama_sidebar_collapsed',
-    DEBUG_MODE: 'ollama_debug_mode'
+    DEBUG_MODE: 'ollama_debug_mode',
+    FILE_METADATA: 'ollama_file_metadata'
 };
 
 // Application constants
@@ -108,9 +130,56 @@ const TOOL_CONFIG = {
     SUPPORTED_DOC_EXTENSIONS: ['pdf', 'txt', 'md']
 };
 
+// Analysis template configuration
+const ANALYSIS_TEMPLATES = {
+    summarize: {
+        name: 'Summarize',
+        icon: '📝',
+        instruction: 'Provide a concise summary of this file, highlighting the main points and key information.',
+        applicableTypes: ['all']
+    },
+    analyze: {
+        name: 'Analyze',
+        icon: '🔍',
+        instruction: 'Perform a detailed analysis of this file, examining its structure, content, and purpose.',
+        applicableTypes: ['all']
+    },
+    extractData: {
+        name: 'Extract Data',
+        icon: '📊',
+        instruction: 'Extract and organize the key data points, statistics, or structured information from this file.',
+        applicableTypes: ['json', 'csv', 'xml', 'yaml', 'yml', 'pdf', 'txt', 'md']
+    },
+    findErrors: {
+        name: 'Find Errors',
+        icon: '🐛',
+        instruction: 'Identify any errors, bugs, issues, or potential problems in this file.',
+        applicableTypes: ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'rs', 'go', 'rb', 'php', 'swift', 'kt', 'scala', 'vue', 'json', 'csv']
+    },
+    validateSchema: {
+        name: 'Validate Schema',
+        icon: '✅',
+        instruction: 'Validate the structure and schema of this file, checking for completeness and correctness.',
+        applicableTypes: ['json', 'xml', 'yaml', 'yml']
+    },
+    explainCode: {
+        name: 'Explain Code',
+        icon: '💡',
+        instruction: 'Explain what this code does, including its purpose, main functions, and how it works.',
+        applicableTypes: ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'rs', 'go', 'rb', 'php', 'swift', 'kt', 'scala', 'vue']
+    },
+    statistics: {
+        name: 'Statistics',
+        icon: '📈',
+        instruction: 'Calculate and provide statistical analysis of the data in this file, including patterns, trends, and insights.',
+        applicableTypes: ['csv', 'json']
+    }
+};
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
+    loadFileMetadata(); // Load file metadata from localStorage
     refreshModels();
     checkConnection();
     updateImageButtonVisibility();
@@ -400,6 +469,148 @@ function removeImage() {
 }
 
 /**
+ * Get applicable analysis templates for a file type
+ * @param {string} fileType - The file extension
+ * @returns {Array} Array of applicable template objects
+ */
+function getApplicableTemplates(fileType) {
+    const templates = [];
+    for (const [key, template] of Object.entries(ANALYSIS_TEMPLATES)) {
+        if (template.applicableTypes.includes('all') || template.applicableTypes.includes(fileType.toLowerCase())) {
+            templates.push({ key, ...template });
+        }
+    }
+    return templates;
+}
+
+/**
+ * Create quick action buttons for file analysis
+ * @param {string} fileType - The file extension
+ * @returns {HTMLElement} Container with quick action buttons
+ */
+function createQuickActionButtons(fileType) {
+    const container = document.createElement('div');
+    container.className = 'file-quick-actions';
+    container.id = 'file-quick-actions';
+
+    const templates = getApplicableTemplates(fileType);
+
+    // Limit to top 3 most relevant templates
+    const topTemplates = templates.slice(0, 3);
+
+    topTemplates.forEach(template => {
+        const button = document.createElement('button');
+        button.className = 'quick-action-btn';
+        button.innerHTML = `${template.icon} ${template.name}`;
+        button.title = template.instruction;
+        button.onclick = () => executeQuickAnalysis(template.key);
+        container.appendChild(button);
+    });
+
+    return container;
+}
+
+/**
+ * Execute a quick analysis using a template
+ * @param {string} templateKey - The template key to use
+ */
+async function executeQuickAnalysis(templateKey) {
+    const template = ANALYSIS_TEMPLATES[templateKey];
+    if (!template) return;
+
+    // Update state
+    appState.file.isAnalyzed = true;
+    appState.file.lastAnalysisType = templateKey;
+
+    // Create a message to trigger analysis
+    const chatInput = document.getElementById('chat-input');
+    chatInput.value = template.instruction;
+
+    // Send the message
+    await sendMessage();
+}
+
+/**
+ * Update application state for file upload
+ * @param {Object} fileData - File metadata
+ */
+function updateFileState(fileData) {
+    appState.file = {
+        isUploaded: true,
+        isProcessing: false,
+        isAnalyzed: false,
+        lastAnalysisType: null,
+        uploadTimestamp: Date.now(),
+        metadata: {
+            name: fileData.name,
+            type: fileData.type,
+            size: fileData.size,
+            extension: fileData.extension
+        }
+    };
+
+    // Save metadata to localStorage (not content)
+    saveFileMetadata();
+}
+
+/**
+ * Save file metadata to localStorage
+ */
+function saveFileMetadata() {
+    try {
+        const metadata = {
+            ...appState.file.metadata,
+            uploadTimestamp: appState.file.uploadTimestamp,
+            lastAnalysisType: appState.file.lastAnalysisType
+        };
+        localStorage.setItem(STORAGE_KEYS.FILE_METADATA, JSON.stringify(metadata));
+    } catch (error) {
+        console.error('Error saving file metadata:', error);
+    }
+}
+
+/**
+ * Load file metadata from localStorage
+ */
+function loadFileMetadata() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.FILE_METADATA);
+        if (saved) {
+            const metadata = JSON.parse(saved);
+            addDebugLog('Loaded file metadata from localStorage', 'info', JSON.stringify(metadata, null, 2));
+        }
+    } catch (error) {
+        console.error('Error loading file metadata:', error);
+    }
+}
+
+/**
+ * Reset file state
+ */
+function resetFileState() {
+    appState.file = {
+        isUploaded: false,
+        isProcessing: false,
+        isAnalyzed: false,
+        lastAnalysisType: null,
+        uploadTimestamp: null,
+        metadata: {
+            name: '',
+            type: '',
+            size: 0,
+            extension: ''
+        }
+    };
+
+    // Clear localStorage metadata
+    try {
+        localStorage.removeItem(STORAGE_KEYS.FILE_METADATA);
+    } catch (error) {
+        console.error('Error clearing file metadata:', error);
+    }
+}
+
+/**
  * Get an emoji icon for a file based on its extension
  * @param {string} extension - The file extension
  * @returns {string} An emoji icon representing the file type
@@ -686,6 +897,23 @@ async function handleFileUpload(event) {
         fileButton.title = `File ready: ${file.name}`;
         fileReadyBadge.classList.add('active');
 
+        // Update application state
+        updateFileState({
+            name: file.name,
+            type: file.type,
+            size: fileSize,
+            extension: extension
+        });
+
+        // Add quick action buttons to file preview
+        const existingActions = document.getElementById('file-quick-actions');
+        if (existingActions) {
+            existingActions.remove();
+        }
+
+        const quickActions = createQuickActionButtons(extension);
+        preview.appendChild(quickActions);
+
     } catch (error) {
         hideLoadingIndicator();
         console.error('File upload error:', error);
@@ -712,6 +940,12 @@ function removeFile() {
     // Remove any loading indicators
     hideLoadingIndicator();
 
+    // Remove quick action buttons
+    const quickActions = document.getElementById('file-quick-actions');
+    if (quickActions) {
+        quickActions.remove();
+    }
+
     // Reset file button visual indicators
     const fileButton = document.getElementById('file-button');
     const fileReadyBadge = document.getElementById('file-ready-badge');
@@ -719,6 +953,9 @@ function removeFile() {
     fileButton.classList.remove('has-file');
     fileButton.title = 'Upload a file for analysis';
     fileReadyBadge.classList.remove('active');
+
+    // Reset application state
+    resetFileState();
 }
 
 /**
@@ -1240,6 +1477,14 @@ function clearChat() {
     chatHistory = [];
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.innerHTML = '';
+
+    // Reset file state when clearing chat
+    if (currentFile) {
+        removeFile();
+    }
+
+    // Reset application state
+    resetFileState();
 }
 
 // ============================================================================
@@ -1437,9 +1682,37 @@ async function analyzeFile(params) {
 
                 if (Array.isArray(parsed)) {
                     analysis += `  - Array length: ${parsed.length}\n`;
+                    if (parsed.length > 0) {
+                        analysis += `  - First element type: ${typeof parsed[0]}\n`;
+                        if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+                            analysis += `  - Keys in first element: ${Object.keys(parsed[0]).join(', ')}\n`;
+                        }
+                    }
                 } else {
-                    analysis += `  - Object keys: ${Object.keys(parsed).length}\n`;
-                    analysis += `  - Keys: ${Object.keys(parsed).join(', ')}\n`;
+                    const keys = Object.keys(parsed);
+                    analysis += `  - Object keys: ${keys.length}\n`;
+                    analysis += `  - Keys: ${keys.join(', ')}\n`;
+
+                    // Analyze nested structure
+                    let nestedObjects = 0;
+                    let nestedArrays = 0;
+                    for (const key of keys) {
+                        if (Array.isArray(parsed[key])) nestedArrays++;
+                        else if (typeof parsed[key] === 'object' && parsed[key] !== null) nestedObjects++;
+                    }
+                    if (nestedObjects > 0) analysis += `  - Nested objects: ${nestedObjects}\n`;
+                    if (nestedArrays > 0) analysis += `  - Nested arrays: ${nestedArrays}\n`;
+                }
+
+                // Schema validation
+                analysis += `\n✅ Schema Validation:\n`;
+                analysis += `  - Valid JSON syntax: Yes\n`;
+                analysis += `  - Well-formed: Yes\n`;
+
+                // Type consistency check for arrays
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const types = new Set(parsed.map(item => typeof item));
+                    analysis += `  - Array type consistency: ${types.size === 1 ? 'Consistent' : 'Mixed types'}\n`;
                 }
 
                 analysis += `\n📊 Formatted JSON:\n`;
@@ -1447,7 +1720,9 @@ async function analyzeFile(params) {
             } catch (e) {
                 analysis += `❌ Error: Invalid JSON format\n`;
                 analysis += `  - ${e.message}\n\n`;
-                analysis += `📄 Raw content (first 500 chars):\n${currentFile.substring(0, 500)}\n`;
+                analysis += `🔍 Error Details:\n`;
+                analysis += `  - Line/Column: ${e.message.match(/position (\d+)/) ? e.message : 'Unknown'}\n`;
+                analysis += `\n📄 Raw content (first 500 chars):\n${currentFile.substring(0, 500)}\n`;
             }
         } else if (fileExtension === 'csv') {
             const lines = currentFile.split('\n').filter(line => line.trim());
@@ -1456,9 +1731,47 @@ async function analyzeFile(params) {
             analysis += `  - Total rows: ${lines.length}\n`;
 
             if (lines.length > 0) {
-                const columns = lines[0].split(',').length;
-                analysis += `  - Columns per row: ${columns}\n\n`;
-                analysis += `📋 Preview (first 10 lines):\n`;
+                const headers = lines[0].split(',').map(h => h.trim());
+                const columns = headers.length;
+                analysis += `  - Columns: ${columns}\n`;
+                analysis += `  - Data rows: ${lines.length - 1}\n`;
+                analysis += `  - Column headers: ${headers.join(', ')}\n`;
+
+                // Statistical analysis
+                if (lines.length > 1) {
+                    analysis += `\n📈 Statistical Analysis:\n`;
+
+                    // Analyze each column
+                    const columnData = headers.map(() => []);
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = lines[i].split(',').map(v => v.trim());
+                        values.forEach((val, idx) => {
+                            if (idx < columnData.length) {
+                                columnData[idx].push(val);
+                            }
+                        });
+                    }
+
+                    // Check for numeric columns and calculate stats
+                    headers.forEach((header, idx) => {
+                        const values = columnData[idx];
+                        const numericValues = values.map(v => parseFloat(v)).filter(v => !isNaN(v));
+
+                        if (numericValues.length > 0 && numericValues.length === values.length) {
+                            const sum = numericValues.reduce((a, b) => a + b, 0);
+                            const avg = sum / numericValues.length;
+                            const min = Math.min(...numericValues);
+                            const max = Math.max(...numericValues);
+
+                            analysis += `  - "${header}": Numeric (Min: ${min}, Max: ${max}, Avg: ${avg.toFixed(2)})\n`;
+                        } else {
+                            const uniqueValues = new Set(values);
+                            analysis += `  - "${header}": Text (${uniqueValues.size} unique values)\n`;
+                        }
+                    });
+                }
+
+                analysis += `\n📋 Preview (first 10 rows):\n`;
                 analysis += `\`\`\`csv\n${lines.slice(0, 10).join('\n')}\n\`\`\`\n`;
             } else {
                 analysis += `\n⚠️ Warning: File appears to be empty\n`;
@@ -1481,17 +1794,75 @@ async function analyzeFile(params) {
             // Code files with syntax highlighting hints
             const lines = currentFile.split('\n');
             const words = currentFile.split(/\s+/).filter(w => w.length > 0);
+            const nonEmptyLines = lines.filter(l => l.trim());
+            const commentLines = lines.filter(l => {
+                const trimmed = l.trim();
+                return trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('/*') || trimmed.startsWith('*');
+            });
 
             analysis += `✅ Content Type: ${syntaxLang.toUpperCase()} Code\n`;
             analysis += `📊 Code Analysis:\n`;
             analysis += `  - Total lines: ${lines.length}\n`;
-            analysis += `  - Non-empty lines: ${lines.filter(l => l.trim()).length}\n`;
+            analysis += `  - Code lines: ${nonEmptyLines.length}\n`;
+            analysis += `  - Comment lines: ${commentLines.length}\n`;
             analysis += `  - Total words: ${words.length}\n`;
             analysis += `  - Total characters: ${currentFile.length}\n`;
-            analysis += `  - Syntax highlighting: ${syntaxLang}\n\n`;
+            analysis += `  - Syntax highlighting: ${syntaxLang}\n`;
 
+            // Code quality checks
+            const issues = [];
+
+            // Check for common issues based on language
+            if (['js', 'jsx', 'ts', 'tsx'].includes(fileExtension)) {
+                if (currentFile.includes('console.log')) {
+                    issues.push('Console.log statements detected (consider removing for production)');
+                }
+                if (currentFile.includes('debugger')) {
+                    issues.push('Debugger statements detected');
+                }
+                if (currentFile.match(/var\s+\w+/)) {
+                    issues.push('Use of "var" detected (consider using "let" or "const")');
+                }
+                if (currentFile.includes('== ') && !currentFile.includes('===')) {
+                    issues.push('Loose equality (==) detected (consider using strict equality ===)');
+                }
+            } else if (fileExtension === 'py') {
+                if (currentFile.includes('print(')) {
+                    issues.push('Print statements detected (consider using logging)');
+                }
+                if (currentFile.match(/except:/)) {
+                    issues.push('Bare except clauses detected (specify exception types)');
+                }
+            }
+
+            // Check for TODO/FIXME comments
+            const todoMatches = currentFile.match(/TODO|FIXME|HACK|XXX/gi);
+            if (todoMatches) {
+                issues.push(`${todoMatches.length} TODO/FIXME comments found`);
+            }
+
+            // Check for very long lines
+            const longLines = lines.filter(l => l.length > 120);
+            if (longLines.length > 0) {
+                issues.push(`${longLines.length} lines exceed 120 characters`);
+            }
+
+            if (issues.length > 0) {
+                analysis += `\n🐛 Potential Issues:\n`;
+                issues.forEach(issue => {
+                    analysis += `  - ${issue}\n`;
+                });
+            }
+
+            // Function/class detection
+            const functions = currentFile.match(/function\s+\w+|const\s+\w+\s*=\s*\(|def\s+\w+|class\s+\w+/g);
+            if (functions && functions.length > 0) {
+                analysis += `\n🔍 Code Structure:\n`;
+                analysis += `  - Functions/Classes detected: ${functions.length}\n`;
+            }
+
+            analysis += `\n💻 Source Code:\n`;
             if (currentFile.length > 0) {
-                analysis += `💻 Source Code:\n`;
                 analysis += `\`\`\`${syntaxLang}\n${currentFile}\n\`\`\`\n`;
             } else {
                 analysis += `⚠️ Warning: File appears to be empty\n`;
