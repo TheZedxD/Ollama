@@ -518,13 +518,32 @@ async function executeQuickAnalysis(templateKey) {
     const template = ANALYSIS_TEMPLATES[templateKey];
     if (!template) return;
 
+    // Validate that a file has been uploaded
+    if (!currentFile || !currentFileName) {
+        alert('Please upload a file before using quick analysis.');
+        return;
+    }
+
     // Update state
     appState.file.isAnalyzed = true;
     appState.file.lastAnalysisType = templateKey;
 
-    // Create a message to trigger analysis
-    const chatInput = document.getElementById('chat-input');
-    chatInput.value = template.instruction;
+    // Check if file analysis tool is enabled
+    const fileAnalysisEnabled = activeTools && activeTools['file-analysis'];
+
+    if (fileAnalysisEnabled) {
+        // Use the file_analysis tool by instructing the AI to use it
+        const chatInput = document.getElementById('chat-input');
+        chatInput.value = `Please analyze the uploaded file "${currentFileName}" and: ${template.instruction}`;
+    } else {
+        // If tool is not enabled, directly include file content in the message
+        const chatInput = document.getElementById('chat-input');
+        const filePreview = currentFile.length > 10000
+            ? currentFile.substring(0, 10000) + '\n\n[... file truncated ...]'
+            : currentFile;
+
+        chatInput.value = `File: ${currentFileName}\n\nContent:\n\`\`\`\n${filePreview}\n\`\`\`\n\n${template.instruction}`;
+    }
 
     // Send the message
     await sendMessage();
@@ -2683,10 +2702,17 @@ async function sendMessage() {
                     const synthesisElapsedTime = (Date.now() - synthesisStartTime) / 1000;
                     const synthesisTokensPerSecond = synthesisEvalTokens > 0 ? (synthesisEvalTokens / synthesisElapsedTime).toFixed(2) : 0;
                     updateMessageStats(synthesisMessageDiv, synthesisTotalTokens, synthesisTokensPerSecond);
+                } else {
+                    // No synthesis response received
+                    addDebugLog('No synthesis response received', 'error',
+                        `Model: ${model}\nTool results were provided but synthesis failed\nPrompt tokens: ${synthesisPromptTokens}\nEval tokens: ${synthesisEvalTokens}`
+                    );
+                    synthesisContentDiv.innerHTML = `<p style="color: #ff4444;">No response received while synthesizing results. The tool executed successfully but the model did not generate a response.</p>`;
                 }
 
             } catch (synthesisError) {
                 console.error('Synthesis error:', synthesisError);
+                addDebugLog('Synthesis error', 'error', `${synthesisError.message}\n${synthesisError.stack}`);
                 synthesisContentDiv.innerHTML = `<p style="color: #ff4444;">Error synthesizing results: ${synthesisError.message}</p>`;
             }
 
@@ -2732,7 +2758,11 @@ async function sendMessage() {
 
             scrollToBottom();
         } else {
-            throw new Error('No response received from model');
+            // Log detailed debugging information
+            addDebugLog('No response received from model', 'error',
+                `Model: ${model}\nMessages sent: ${messages.length}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}`
+            );
+            throw new Error('No response received from model. Please check that the model is loaded and responding correctly.');
         }
 
     } catch (error) {
