@@ -2114,7 +2114,12 @@ Examples:
 `;
     }
 
-    toolsPrompt += `\nIMPORTANT: When you use a tool, it will be executed immediately and results will be provided to you. You will then receive another turn to synthesize and present the information to the user in a helpful, natural way. Do not tell the user to wait - just use the tool and you'll get the results automatically.`;
+    toolsPrompt += `\n\nIMPORTANT TOOL USAGE INSTRUCTIONS:
+1. When you need information that requires a tool, ALWAYS use the tool - don't tell the user you cannot access it
+2. Simply output the tool call syntax - the tool will execute automatically and you'll receive the results
+3. After receiving tool results, you'll get another turn to synthesize and present the information naturally
+4. NEVER include disclaimers like "I cannot search the web" or "I don't have access to real-time information" when these tools are available to you
+5. Just use the tool directly and confidently - the results will be provided to you automatically`;
 
     return toolsPrompt;
 }
@@ -2551,6 +2556,11 @@ async function sendMessage() {
         const toolCalls = parseToolCalls(fullResponse);
 
         if (toolCalls.length > 0 && (activeTools['web-search'] || activeTools['file-analysis'])) {
+            // Log tool call detection
+            addDebugLog('Tool calls detected', 'info',
+                `Found ${toolCalls.length} tool call(s):\n${toolCalls.map(tc => `- ${tc.name}("${tc.query}")`).join('\n')}\n\nFull response:\n${fullResponse}`
+            );
+
             // Save the assistant's message with tool calls to history
             chatHistory.push({ role: 'assistant', content: fullResponse });
 
@@ -2580,6 +2590,11 @@ async function sendMessage() {
                 try {
                     // Execute the tool
                     const toolResult = await executeTool(toolCall.name, toolCall);
+
+                    // Log successful tool execution
+                    addDebugLog(`Tool execution successful: ${toolCall.name}`, 'info',
+                        `Query: "${toolCall.query}"\nResult length: ${toolResult.length} characters\nResult preview: ${toolResult.substring(0, 200)}...`
+                    );
 
                     // Format results based on tool type
                     let formattedResult;
@@ -2636,6 +2651,10 @@ async function sendMessage() {
             }
 
             // Now continue the conversation - let the AI synthesize the results
+            addDebugLog('Starting synthesis phase', 'info',
+                `Tool execution complete. Now asking model to synthesize ${toolCalls.length} tool result(s) into a natural response.`
+            );
+
             // Create a new assistant message for the synthesis
             const synthesisMessageDiv = createMessageElement('assistant', model);
             const synthesisContentDiv = synthesisMessageDiv.querySelector('.message-content');
@@ -2726,7 +2745,8 @@ async function sendMessage() {
                 }
 
                 // Final update for synthesis
-                if (synthesisFullResponse) {
+                const trimmedSynthesisResponse = synthesisFullResponse.trim();
+                if (trimmedSynthesisResponse) {
                     synthesisContentDiv.innerHTML = parseMarkdown(synthesisFullResponse);
                     chatHistory.push({ role: 'assistant', content: synthesisFullResponse });
 
@@ -2738,9 +2758,12 @@ async function sendMessage() {
                 } else {
                     // No synthesis response received
                     addDebugLog('No synthesis response received', 'error',
-                        `Model: ${model}\nTool results were provided but synthesis failed\nPrompt tokens: ${synthesisPromptTokens}\nEval tokens: ${synthesisEvalTokens}`
+                        `Model: ${model}\nTool results were provided but synthesis failed\nPrompt tokens: ${synthesisPromptTokens}\nEval tokens: ${synthesisEvalTokens}\nResponse length: ${synthesisFullResponse.length}\nResponse (raw): "${synthesisFullResponse}"`
                     );
                     synthesisContentDiv.innerHTML = `<p style="color: #ff4444;">No response received while synthesizing results. The tool executed successfully but the model did not generate a response.</p>`;
+
+                    // Log the full synthesis messages for debugging
+                    addDebugLog('Synthesis messages', 'info', JSON.stringify(synthesisMessages, null, 2));
                 }
 
             } catch (synthesisError) {
@@ -2758,7 +2781,8 @@ async function sendMessage() {
         }
 
         // Final update - remove cursor and ensure proper parsing
-        if (fullResponse) {
+        const trimmedFullResponse = fullResponse.trim();
+        if (trimmedFullResponse) {
             // Handle thinking models differently
             if (isThinkingModel && hasShownThinking) {
                 // Keep the thinking box collapsed and show the regular response
@@ -2791,9 +2815,9 @@ async function sendMessage() {
 
             scrollToBottom();
         } else {
-            // Log detailed debugging information
+            // Log detailed debugging information with more context
             addDebugLog('No response received from model', 'error',
-                `Model: ${model}\nMessages sent: ${messages.length}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}`
+                `Model: ${model}\nMessages sent: ${messages.length}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nResponse length: ${fullResponse.length}\nResponse (raw): "${fullResponse}"\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}`
             );
             throw new Error('No response received from model. Please check that the model is loaded and responding correctly.');
         }
