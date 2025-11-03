@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ollama Chat Interface</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- PDF.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -105,7 +107,7 @@
                         <div class="tool-item" onclick="toggleTool('file-analysis')">
                             <div class="tool-checkbox" id="tool-file-analysis"></div>
                             <div class="tool-label">File Analysis</div>
-                            <div class="tool-tooltip">Analyze uploaded files (TXT, PDF, JSON, CSV, MD)</div>
+                            <div class="tool-tooltip">Analyze uploaded files (PDF, JSON, CSV, TXT, MD, JS, TS, PY, RS, GO, and more)</div>
                         </div>
                     </div>
                     <div class="tools-settings">
@@ -151,7 +153,7 @@
                         📎
                         <span class="file-ready-badge" id="file-ready-badge" style="display: none;">✓</span>
                     </button>
-                    <input type="file" id="file-input" accept=".txt,.pdf,.json,.csv,.md,.js,.py,.java,.c,.cpp,.html,.css,.xml,.yaml,.yml" onchange="handleFileUpload(event)" style="display: none;">
+                    <input type="file" id="file-input" accept=".txt,.pdf,.json,.csv,.md,.js,.py,.java,.c,.cpp,.html,.css,.xml,.yaml,.yml,.rs,.go,.ts,.tsx,.jsx,.vue,.rb,.php,.swift,.kt,.scala" onchange="handleFileUpload(event)" style="display: none;">
                     <textarea
                         class="chat-input"
                         id="chat-input"
