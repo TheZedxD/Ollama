@@ -2339,6 +2339,9 @@ async function sendMessage() {
     let promptTokens = 0;
     let evalTokens = 0;
 
+    // Get thinking animation element
+    const thinkingAnimation = document.getElementById('thinking-animation');
+
     // Thinking model state
     let isThinkingModel = isThinkingModelSelected();
     const thinkingState = {
@@ -2574,39 +2577,61 @@ async function sendMessage() {
                 contentDiv.appendChild(toolDiv);
                 scrollToBottom();
 
-                // Execute the tool
-                const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
+                try {
+                    // Execute the tool
+                    const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
 
-                // Format results based on tool type
-                let formattedResult;
-                let collapsibleTitle;
+                    // Format results based on tool type
+                    let formattedResult;
+                    let collapsibleTitle;
 
-                if (toolCall.name === TOOL_CONFIG.NAMES.WEB_SEARCH) {
-                    formattedResult = formatSearchResults(toolResult);
-                    collapsibleTitle = `🔍 Web Search Results: "${toolCall.query}"`;
-                } else {
-                    formattedResult = escapeHtml(toolResult).replace(/\n/g, '<br>');
-                    collapsibleTitle = `🔍 ${toolCall.name} Results`;
-                }
+                    if (toolCall.name === TOOL_CONFIG.NAMES.WEB_SEARCH) {
+                        formattedResult = formatSearchResults(toolResult);
+                        collapsibleTitle = `🔍 Web Search Results: "${toolCall.query}"`;
+                    } else {
+                        formattedResult = escapeHtml(toolResult).replace(/\n/g, '<br>');
+                        collapsibleTitle = `🔍 ${toolCall.name} Results`;
+                    }
 
-                // Create collapsible search results (collapsed by default)
-                const collapsibleResults = createCollapsibleSection(
-                    collapsibleTitle,
-                    formattedResult,
-                    true // collapsed by default
-                );
+                    // Create collapsible search results (collapsed by default)
+                    const collapsibleResults = createCollapsibleSection(
+                        collapsibleTitle,
+                        formattedResult,
+                        true // collapsed by default
+                    );
 
-                // Replace the loading div with collapsible results
-                toolDiv.remove();
-                contentDiv.appendChild(collapsibleResults);
-                scrollToBottom();
+                    // Replace the loading div with collapsible results
+                    toolDiv.remove();
+                    contentDiv.appendChild(collapsibleResults);
+                    scrollToBottom();
 
-                // Add tool result to history
-                chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
+                    // Add tool result to history
+                    chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
 
-                // If file_analysis was executed and auto-clear is enabled, clear the file
-                if (toolCall.name === TOOL_CONFIG.NAMES.FILE_ANALYSIS && settings['auto-clear-file']) {
-                    removeFile();
+                    // If file_analysis was executed and auto-clear is enabled, clear the file
+                    if (toolCall.name === TOOL_CONFIG.NAMES.FILE_ANALYSIS && settings['auto-clear-file']) {
+                        removeFile();
+                    }
+                } catch (toolError) {
+                    // Always remove the loading spinner on error
+                    toolDiv.remove();
+
+                    // Display error message
+                    console.error(`Tool execution error for ${toolCall.name}:`, toolError);
+                    addDebugLog(`Tool execution error: ${toolCall.name}`, 'error', `${toolError.message}\n${toolError.stack || ''}`);
+
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'search-error';
+                    errorDiv.innerHTML = `
+                        <strong>❌ Tool Execution Failed: ${toolCall.name}</strong><br>
+                        Query: "${toolCall.query}"<br>
+                        Error: ${escapeHtml(toolError.message)}
+                    `;
+                    contentDiv.appendChild(errorDiv);
+                    scrollToBottom();
+
+                    // Add error to history so the AI is aware
+                    chatHistory.push({ role: 'system', content: `Tool execution failed for ${toolCall.name}("${toolCall.query}"): ${toolError.message}` });
                 }
             }
 
