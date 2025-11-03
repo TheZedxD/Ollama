@@ -2579,7 +2579,7 @@ async function sendMessage() {
 
                 try {
                     // Execute the tool
-                    const toolResult = await executeTool(toolCall.name, { query: toolCall.query });
+                    const toolResult = await executeTool(toolCall.name, toolCall);
 
                     // Format results based on tool type
                     let formattedResult;
@@ -2645,16 +2645,24 @@ async function sendMessage() {
             thinkingAnimation.classList.add('active');
             document.getElementById('typing-indicator').classList.add('active');
 
+            // Prepare synthesis messages with system prompt and tools context
+            const synthesisMessages = [];
+            let synthesisSystemMessage = systemPrompt || '';
+            synthesisSystemMessage += getToolsPrompt();
+
+            if (synthesisSystemMessage) {
+                synthesisMessages.push({ role: 'system', content: synthesisSystemMessage });
+            }
+            synthesisMessages.push(...chatHistory);
+
             // Make a follow-up API call to let the AI synthesize the results
             try {
+                const synthesisPayload = prepareAPIPayload(model, synthesisMessages, modelOptions);
+
                 const synthesisResponse = await fetch(`${ollamaUrl}/api/chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: model,
-                        messages: chatHistory,
-                        stream: true
-                    })
+                    body: JSON.stringify(synthesisPayload)
                 });
 
                 if (!synthesisResponse.ok) {
