@@ -59,6 +59,55 @@ const STORAGE_KEYS = {
     DEBUG_MODE: 'ollama_debug_mode'
 };
 
+// Application constants
+const CONSTANTS = {
+    // Token estimation
+    TOKEN_CHARS_RATIO: 4,
+    TOKEN_WORDS_RATIO: 1.3,
+
+    // File size limits
+    MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
+    LARGE_FILE_WARNING_SIZE: 5 * 1024 * 1024, // 5MB
+    LOADING_INDICATOR_THRESHOLD: 1024 * 1024, // 1MB
+
+    // Search and display
+    MAX_SEARCH_RESULTS: 5,
+    MAX_PREVIEW_CHARS: 500,
+    MAX_PREVIEW_LINES: 10,
+    MAX_DEBUG_LOG_ENTRIES: 50,
+
+    // UI timings
+    ERROR_NOTIFICATION_DURATION: 5000, // 5 seconds
+    FADE_OUT_DURATION: 300, // 300ms
+    COPY_BUTTON_TIMEOUT: 2000, // 2 seconds
+
+    // Display sizes
+    IMAGE_MAX_WIDTH: '300px',
+
+    // HTTP
+    CONTENT_TYPE_JSON: 'application/json'
+};
+
+// Tool configuration
+const TOOL_CONFIG = {
+    // Tool names
+    NAMES: {
+        WEB_SEARCH: 'web_search',
+        FILE_ANALYSIS: 'file_analysis'
+    },
+
+    // Tool descriptions
+    DESCRIPTIONS: {
+        WEB_SEARCH: 'Search the web using DuckDuckGo to find current information, facts, or answers to questions',
+        FILE_ANALYSIS: 'Analyze the content of an uploaded file (TXT, PDF, JSON, CSV, MD, JS, TS, PY, JAVA, C, CPP, RS, GO, and more code files)'
+    },
+
+    // Supported file extensions
+    SUPPORTED_CODE_EXTENSIONS: ['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'rs', 'go', 'rb', 'php', 'swift', 'kt', 'scala', 'vue'],
+    SUPPORTED_DATA_EXTENSIONS: ['json', 'csv', 'xml', 'yaml', 'yml'],
+    SUPPORTED_DOC_EXTENSIONS: ['pdf', 'txt', 'md']
+};
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
@@ -74,17 +123,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Estimate token count (rough approximation: ~4 chars = 1 token)
+/**
+ * Estimate token count for a given text
+ * Uses a rough approximation based on words and characters
+ * @param {string} text - The text to estimate tokens for
+ * @returns {number} Estimated token count
+ */
 function estimateTokenCount(text) {
     if (!text) return 0;
     // More accurate estimation: count words and characters
     const words = text.trim().split(/\s+/).length;
     const chars = text.length;
-    // Average of word-based (1.3 tokens per word) and char-based (4 chars per token)
-    return Math.ceil((words * 1.3 + chars / 4) / 2);
+    // Average of word-based and char-based estimation
+    return Math.ceil((words * CONSTANTS.TOKEN_WORDS_RATIO + chars / CONSTANTS.TOKEN_CHARS_RATIO) / 2);
 }
 
-// Check if current model supports vision
+/**
+ * Check if the currently selected model supports vision/image input
+ * @returns {boolean} True if the model supports vision
+ */
 function isVisionModelSelected() {
     const selectedModel = document.getElementById('model-select').value.toLowerCase();
 
@@ -112,7 +169,10 @@ function isVisionModelSelected() {
     return visionPatterns.some(pattern => selectedModel.includes(pattern));
 }
 
-// Check if current model is a thinking model
+/**
+ * Check if the currently selected model is a thinking/reasoning model
+ * @returns {boolean} True if the model is a thinking model
+ */
 function isThinkingModelSelected() {
     const selectedModel = document.getElementById('model-select').value.toLowerCase();
 
@@ -131,7 +191,13 @@ function isThinkingModelSelected() {
     return thinkingPatterns.some(pattern => selectedModel.includes(pattern));
 }
 
-// Create a collapsible section
+/**
+ * Create a collapsible section UI element
+ * @param {string} title - The section title
+ * @param {string} content - HTML content to display
+ * @param {boolean} collapsed - Whether the section starts collapsed
+ * @returns {HTMLElement} The collapsible section element
+ */
 function createCollapsibleSection(title, content, collapsed = false) {
     const section = document.createElement('div');
     section.className = `collapsible-section ${collapsed ? 'collapsed' : ''}`;
@@ -161,7 +227,11 @@ function createCollapsibleSection(title, content, collapsed = false) {
     return section;
 }
 
-// Format web search results with icons, clickable links, and timestamp
+/**
+ * Format web search results with icons, clickable links, and timestamp
+ * @param {string} searchData - JSON string containing search results
+ * @returns {string} Formatted HTML for displaying search results
+ */
 function formatSearchResults(searchData) {
     try {
         const data = JSON.parse(searchData);
@@ -209,7 +279,12 @@ function formatSearchResults(searchData) {
     }
 }
 
-// Create a thinking box (yellow collapsible section)
+/**
+ * Create a thinking box (yellow collapsible section for thinking models)
+ * @param {string} content - HTML content to display
+ * @param {boolean} collapsed - Whether the box starts collapsed
+ * @returns {HTMLElement} The thinking box element
+ */
 function createThinkingBox(content, collapsed = false) {
     const box = document.createElement('div');
     box.className = `thinking-box ${collapsed ? 'collapsed' : ''}`;
@@ -239,12 +314,19 @@ function createThinkingBox(content, collapsed = false) {
     return box;
 }
 
-// Toggle collapsible section
+/**
+ * Toggle the collapsed state of a collapsible element
+ * @param {HTMLElement} element - The collapsible element to toggle
+ */
 function toggleCollapsible(element) {
     element.classList.toggle('collapsed');
 }
 
-// Parse thinking tags from response
+/**
+ * Parse thinking tags from AI response text
+ * @param {string} text - The text to parse
+ * @returns {Object} Object with thinking sections and cleaned response
+ */
 function parseThinking(text) {
     const thinkPattern = /<think>([\s\S]*?)<\/think>/gi;
     let match;
@@ -264,7 +346,9 @@ function parseThinking(text) {
     };
 }
 
-// Update image button visibility based on selected model
+/**
+ * Update image button visibility based on whether the selected model supports vision
+ */
 function updateImageButtonVisibility() {
     const imageButton = document.getElementById('image-button');
     if (isVisionModelSelected()) {
@@ -278,7 +362,10 @@ function updateImageButtonVisibility() {
     }
 }
 
-// Handle image upload
+/**
+ * Handle image file upload from input
+ * @param {Event} event - The file input change event
+ */
 function handleImageUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -302,7 +389,9 @@ function handleImageUpload(event) {
     reader.readAsDataURL(file);
 }
 
-// Remove uploaded image
+/**
+ * Remove the currently uploaded image and clear the preview
+ */
 function removeImage() {
     currentImage = null;
     const preview = document.getElementById('image-preview');
@@ -310,7 +399,11 @@ function removeImage() {
     document.getElementById('image-input').value = '';
 }
 
-// Get file type icon based on extension
+/**
+ * Get an emoji icon for a file based on its extension
+ * @param {string} extension - The file extension
+ * @returns {string} An emoji icon representing the file type
+ */
 function getFileIcon(extension) {
     const ext = extension.toLowerCase();
 
@@ -337,8 +430,12 @@ function getFileIcon(extension) {
     return codeIcons[ext] || dataIcons[ext] || docIcons[ext] || '📄';
 }
 
-// Show error message in UI
-function showErrorMessage(message, duration = 5000) {
+/**
+ * Show error message notification in UI
+ * @param {string} message - The error message to display
+ * @param {number} duration - Duration in milliseconds before auto-dismiss (0 = no auto-dismiss)
+ */
+function showErrorMessage(message, duration = CONSTANTS.ERROR_NOTIFICATION_DURATION) {
     // Create error notification element
     const errorDiv = document.createElement('div');
     errorDiv.className = 'error-notification';
@@ -357,13 +454,16 @@ function showErrorMessage(message, duration = 5000) {
         setTimeout(() => {
             if (errorDiv.parentElement) {
                 errorDiv.classList.add('fade-out');
-                setTimeout(() => errorDiv.remove(), 300);
+                setTimeout(() => errorDiv.remove(), CONSTANTS.FADE_OUT_DURATION);
             }
         }, duration);
     }
 }
 
-// Show loading indicator
+/**
+ * Show loading indicator during file processing
+ * @param {string} message - The loading message to display
+ */
 function showLoadingIndicator(message = 'Processing file...') {
     const loadingDiv = document.createElement('div');
     loadingDiv.id = 'file-loading-indicator';
@@ -377,7 +477,9 @@ function showLoadingIndicator(message = 'Processing file...') {
     filePreview.appendChild(loadingDiv);
 }
 
-// Hide loading indicator
+/**
+ * Hide and remove the file loading indicator
+ */
 function hideLoadingIndicator() {
     const loadingDiv = document.getElementById('file-loading-indicator');
     if (loadingDiv) {
@@ -385,7 +487,11 @@ function hideLoadingIndicator() {
     }
 }
 
-// Extract text from PDF file
+/**
+ * Extract text content from a PDF file
+ * @param {File} file - The PDF file to extract text from
+ * @returns {Promise<Object>} Object containing extracted text and page count
+ */
 async function extractPdfText(file) {
     if (typeof pdfjsLib === 'undefined') {
         throw new Error('PDF.js library not loaded. Cannot process PDF files.');
@@ -416,7 +522,11 @@ async function extractPdfText(file) {
     }
 }
 
-// Get syntax highlighting language hint
+/**
+ * Get syntax highlighting language name from file extension
+ * @param {string} extension - The file extension
+ * @returns {string} The language name for syntax highlighting
+ */
 function getSyntaxLanguage(extension) {
     const ext = extension.toLowerCase();
 
@@ -449,7 +559,9 @@ function getSyntaxLanguage(extension) {
     return langMap[ext] || 'text';
 }
 
-// Update file button visibility based on file analysis tool
+/**
+ * Update file button visibility based on whether file analysis tool is enabled
+ */
 function updateFileButtonVisibility() {
     const fileButton = document.getElementById('file-button');
     if (activeTools['file-analysis']) {
@@ -463,7 +575,10 @@ function updateFileButtonVisibility() {
     }
 }
 
-// Handle file upload
+/**
+ * Handle file upload from input element
+ * @param {Event} event - The file input change event
+ */
 async function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -476,18 +591,17 @@ async function handleFileUpload(event) {
 
         // File size validation with warnings
         const fileSize = file.size;
-        const maxSize = 10 * 1024 * 1024; // 10MB
 
-        // Show warning for large files (> 5MB)
-        if (fileSize > 5 * 1024 * 1024 && fileSize <= maxSize) {
+        // Show warning for large files
+        if (fileSize > CONSTANTS.LARGE_FILE_WARNING_SIZE && fileSize <= CONSTANTS.MAX_FILE_SIZE) {
             const sizeInMB = (fileSize / (1024 * 1024)).toFixed(2);
             showErrorMessage(`⚠️ Large file detected (${sizeInMB}MB). Processing may take longer.`, 4000);
         }
 
-        // Block files over 10MB
-        if (fileSize > maxSize) {
+        // Block files over maximum size
+        if (fileSize > CONSTANTS.MAX_FILE_SIZE) {
             const sizeInMB = (fileSize / (1024 * 1024)).toFixed(2);
-            showErrorMessage(`❌ File too large (${sizeInMB}MB). Maximum size is 10MB.`, 6000);
+            showErrorMessage(`❌ File too large (${sizeInMB}MB). Maximum size is ${CONSTANTS.MAX_FILE_SIZE / (1024 * 1024)}MB.`, 6000);
             event.target.value = ''; // Reset input
             return;
         }
@@ -504,7 +618,7 @@ async function handleFileUpload(event) {
         preview.style.display = 'flex';
 
         // Show loading indicator for large files or PDFs
-        if (fileSize > 1024 * 1024 || extension === 'pdf') {
+        if (fileSize > CONSTANTS.LOADING_INDICATOR_THRESHOLD || extension === 'pdf') {
             showLoadingIndicator(extension === 'pdf' ? 'Extracting PDF text...' : 'Reading file...');
         }
 
@@ -581,7 +695,9 @@ async function handleFileUpload(event) {
     }
 }
 
-// Remove uploaded file
+/**
+ * Remove the currently uploaded file and clear the preview
+ */
 function removeFile() {
     const removedFileName = currentFileName;
     addDebugLog(`Removing file: ${removedFileName}`, 'file-operation');
@@ -605,7 +721,11 @@ function removeFile() {
     fileReadyBadge.classList.remove('active');
 }
 
-// Format file size for display
+/**
+ * Format file size in bytes to a human-readable string
+ * @param {number} bytes - The file size in bytes
+ * @returns {string} Formatted file size (e.g., "1.5 MB")
+ */
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -922,8 +1042,8 @@ function addDebugLog(message, type = 'info', data = null) {
 
     debugLogs.insertBefore(entry, debugLogs.firstChild);
 
-    // Limit to 50 entries
-    while (debugLogs.children.length > 50) {
+    // Limit to maximum entries
+    while (debugLogs.children.length > CONSTANTS.MAX_DEBUG_LOG_ENTRIES) {
         debugLogs.removeChild(debugLogs.lastChild);
     }
 }
@@ -1122,11 +1242,21 @@ function clearChat() {
     chatMessages.innerHTML = '';
 }
 
-// ===============================
-// FUNCTION CALLING / TOOLS SYSTEM
-// ===============================
+// ============================================================================
+// TOOLS SYSTEM
+// ============================================================================
+// This section contains all tool-related functions including:
+// - Web search (DuckDuckGo and Wikipedia)
+// - File analysis
+// - Tool execution and parsing
+// - Tool prompt generation
+// ============================================================================
 
-// DuckDuckGo HTML Web Search Function (primary)
+/**
+ * Search DuckDuckGo for web results (primary search provider)
+ * @param {string} query - The search query
+ * @returns {Promise<Array>} Array of search results with title, snippet, and URL
+ */
 async function searchDuckDuckGo(query) {
     try {
         // Use DuckDuckGo HTML search for actual web results
@@ -1140,8 +1270,8 @@ async function searchDuckDuckGo(query) {
         const results = [];
         const resultElements = doc.querySelectorAll('.result');
 
-        // Extract up to 5 search results
-        for (let i = 0; i < Math.min(resultElements.length, 5); i++) {
+        // Extract up to maximum search results
+        for (let i = 0; i < Math.min(resultElements.length, CONSTANTS.MAX_SEARCH_RESULTS); i++) {
             const result = resultElements[i];
 
             const titleElement = result.querySelector('.result__a');
@@ -1164,7 +1294,11 @@ async function searchDuckDuckGo(query) {
     }
 }
 
-// Wikipedia API Search Function (fallback)
+/**
+ * Search Wikipedia API for factual information (fallback search provider)
+ * @param {string} query - The search query
+ * @returns {Promise<Array>} Array of Wikipedia search results with title, snippet, and URL
+ */
 async function searchWikipedia(query) {
     try {
         // Use Wikipedia API for factual queries
@@ -1192,7 +1326,12 @@ async function searchWikipedia(query) {
     }
 }
 
-// Combined Web Search Function with fallback
+/**
+ * Combined web search function with fallback mechanism
+ * Tries DuckDuckGo first, falls back to Wikipedia if needed
+ * @param {string} query - The search query
+ * @returns {Promise<string>} JSON string containing search results with metadata
+ */
 async function webSearch(query) {
     try {
         let allResults = [];
@@ -1251,7 +1390,13 @@ async function webSearch(query) {
     }
 }
 
-// File analysis function
+/**
+ * Analyze an uploaded file and return formatted analysis results
+ * Supports various file types including code files, PDFs, JSON, CSV, and text files
+ * @param {Object} params - Parameters object
+ * @param {string} params.instruction - Optional instruction for how to analyze the file
+ * @returns {Promise<string>} Formatted analysis results as a string
+ */
 async function analyzeFile(params) {
     try {
         // Validate that a file has been uploaded
@@ -1378,8 +1523,8 @@ async function analyzeFile(params) {
 // Tool definitions that the AI can use
 const AVAILABLE_TOOLS = [
     {
-        name: 'web_search',
-        description: 'Search the web using DuckDuckGo to find current information, facts, or answers to questions',
+        name: TOOL_CONFIG.NAMES.WEB_SEARCH,
+        description: TOOL_CONFIG.DESCRIPTIONS.WEB_SEARCH,
         parameters: {
             query: {
                 type: 'string',
@@ -1389,8 +1534,8 @@ const AVAILABLE_TOOLS = [
         execute: webSearch
     },
     {
-        name: 'file_analysis',
-        description: 'Analyze the content of an uploaded file (TXT, PDF, JSON, CSV, MD, JS, TS, PY, JAVA, C, CPP, RS, GO, and more code files)',
+        name: TOOL_CONFIG.NAMES.FILE_ANALYSIS,
+        description: TOOL_CONFIG.DESCRIPTIONS.FILE_ANALYSIS,
         parameters: {
             instruction: {
                 type: 'string',
@@ -1401,7 +1546,12 @@ const AVAILABLE_TOOLS = [
     }
 ];
 
-// Execute a tool call
+/**
+ * Execute a tool call by name with given parameters
+ * @param {string} toolName - Name of the tool to execute
+ * @param {Object} parameters - Parameters to pass to the tool
+ * @returns {Promise<string>} Result of the tool execution
+ */
 async function executeTool(toolName, parameters) {
     const tool = AVAILABLE_TOOLS.find(t => t.name === toolName);
     if (!tool) {
@@ -1420,10 +1570,10 @@ async function executeTool(toolName, parameters) {
         let result;
         // Parameters now include both 'query' and 'instruction' for flexibility
         // Tools can access whichever parameter name they need
-        if (toolName === 'file_analysis') {
+        if (toolName === TOOL_CONFIG.NAMES.FILE_ANALYSIS) {
             // For file_analysis, pass the full parameters object with instruction
             result = await tool.execute({ instruction: parameters.instruction || '' });
-        } else if (toolName === 'web_search') {
+        } else if (toolName === TOOL_CONFIG.NAMES.WEB_SEARCH) {
             // For web_search, pass just the query string
             result = await tool.execute(parameters.query || parameters);
         } else {
@@ -1441,7 +1591,12 @@ async function executeTool(toolName, parameters) {
     }
 }
 
-// Parse tool calls from AI response
+/**
+ * Parse tool calls from AI response text
+ * Supports multiple formats including XML-style tags and JSON code blocks
+ * @param {string} text - The AI response text to parse
+ * @returns {Array} Array of tool call objects with name and parameters
+ */
 function parseToolCalls(text) {
     const toolCalls = [];
 
@@ -1519,17 +1674,21 @@ function parseToolCalls(text) {
     return toolCalls;
 }
 
-// Get tools prompt for system message
+/**
+ * Generate tools prompt to be added to the system message
+ * Includes descriptions and examples for enabled tools
+ * @returns {string} Formatted tools prompt for the system message
+ */
 function getToolsPrompt() {
     const enabledTools = [];
     let toolsPrompt = '';
 
     if (activeTools['web-search']) {
-        enabledTools.push('web_search');
+        enabledTools.push(TOOL_CONFIG.NAMES.WEB_SEARCH);
     }
     // Only include file_analysis if the tool is enabled AND a file is uploaded
     if (activeTools['file-analysis'] && currentFile) {
-        enabledTools.push('file_analysis');
+        enabledTools.push(TOOL_CONFIG.NAMES.FILE_ANALYSIS);
     }
 
     if (enabledTools.length === 0) {
@@ -1570,51 +1729,28 @@ Examples:
     return toolsPrompt;
 }
 
-// Handle Enter Key
-function handleKeyPress(event) {
-    // Ctrl+Enter or Shift+Enter for new line
-    if ((event.ctrlKey || event.shiftKey) && event.key === 'Enter') {
-        // Allow default behavior (new line)
-        return;
-    }
+// ============================================================================
+// MESSAGE HANDLING HELPERS
+// ============================================================================
+// Helper functions for the sendMessage function to improve maintainability
+// ============================================================================
 
-    // Enter alone to send
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        sendMessage();
-    }
-}
-
-// Send Message
-async function sendMessage() {
-    if (isGenerating) return;
-
-    const chatInput = document.getElementById('chat-input');
-    const message = chatInput.value.trim();
-
-    if (!message) return;
-
-    // Calculate user message token count
+/**
+ * Create and display user message in the chat
+ * @param {string} message - The user's message text
+ * @param {string} imageData - Optional base64 image data
+ * @returns {number} Estimated token count for the message
+ */
+function displayUserMessage(message, imageData = null) {
     const userTokenCount = estimateTokenCount(message);
-
-    // Prepare message content for vision models
-    let messageContent = message;
-    let hasImage = false;
-
-    if (isVisionModelSelected() && currentImage) {
-        hasImage = true;
-        // For display purposes, we'll show the image in the UI
-    }
-
-    // Add user message with token count
     const userMessageDiv = createMessageElement('user');
     const userContentDiv = userMessageDiv.querySelector('.message-content');
 
     // If there's an image, display it in the message
-    if (hasImage) {
+    if (imageData) {
         const imgElement = document.createElement('img');
-        imgElement.src = currentImage;
-        imgElement.style.maxWidth = '300px';
+        imgElement.src = imageData;
+        imgElement.style.maxWidth = CONSTANTS.IMAGE_MAX_WIDTH;
         imgElement.style.marginBottom = '10px';
         imgElement.style.display = 'block';
         imgElement.style.border = '1px solid var(--border-color)';
@@ -1630,51 +1766,172 @@ async function sendMessage() {
     userStatsSpan.innerHTML = `<span>${userTokenCount} tokens</span>`;
     userHeaderDiv.appendChild(userStatsSpan);
 
-    // Prepare content for chat history
+    return userTokenCount;
+}
+
+/**
+ * Prepare API request payload
+ * @param {string} model - Model name
+ * @param {Array} messages - Chat history messages
+ * @param {Object} options - Model options (temperature, tokens, etc.)
+ * @returns {Object} API request payload
+ */
+function prepareAPIPayload(model, messages, options) {
+    return {
+        model: model,
+        messages: messages,
+        stream: true,
+        options: {
+            temperature: options.temperature,
+            num_predict: options.maxTokens,
+            top_p: options.topP,
+            top_k: options.topK,
+            repeat_penalty: options.repeatPenalty
+        }
+    };
+}
+
+/**
+ * Update message statistics in the header
+ * @param {HTMLElement} messageDiv - The message container element
+ * @param {number} totalTokens - Total token count
+ * @param {number} tokensPerSecond - Tokens per second rate
+ */
+function updateMessageStats(messageDiv, totalTokens, tokensPerSecond) {
+    const headerDiv = messageDiv.querySelector('.message-header');
+    const statsSpan = document.createElement('div');
+    statsSpan.className = 'message-stats';
+    statsSpan.innerHTML = `
+        <span>${totalTokens} tokens</span>
+        <span>${tokensPerSecond} tk/s</span>
+    `;
+    headerDiv.appendChild(statsSpan);
+}
+
+/**
+ * Set UI state for message generation
+ * @param {boolean} generating - Whether currently generating
+ */
+function setGeneratingState(generating) {
+    const sendButton = document.getElementById('send-button');
+    const chatInput = document.getElementById('chat-input');
+    const thinkingAnimation = document.getElementById('thinking-animation');
+
+    sendButton.disabled = generating;
+    chatInput.disabled = generating;
+    chatInput.style.opacity = generating ? '0.5' : '1';
+    chatInput.style.cursor = generating ? 'not-allowed' : 'text';
+
+    if (generating) {
+        thinkingAnimation.classList.add('active');
+        document.getElementById('typing-indicator').classList.add('active');
+    } else {
+        thinkingAnimation.classList.remove('active');
+        document.getElementById('typing-indicator').classList.remove('active');
+    }
+}
+
+/**
+ * Process streaming response chunk for thinking models
+ * @param {string} chunk - The response chunk
+ * @param {Object} state - Current thinking parsing state
+ * @returns {Object} Updated state
+ */
+function processThinkingChunk(chunk, state) {
+    for (let char of chunk) {
+        if (!state.insideThinkTag) {
+            // Check if we're entering a think tag
+            const checkStr = (state.fullResponse.slice(-7) + char);
+            if (checkStr.endsWith('<think>')) {
+                state.insideThinkTag = true;
+                state.regularContent = state.regularContent.slice(0, -6);
+                continue;
+            }
+            state.regularContent += char;
+        } else {
+            // Check if we're exiting a think tag
+            const checkStr = (state.fullResponse.slice(-8) + char);
+            if (checkStr.endsWith('</think>')) {
+                state.insideThinkTag = false;
+                state.thinkingContent = state.thinkingContent.slice(0, -7);
+                continue;
+            }
+            state.thinkingContent += char;
+        }
+    }
+    return state;
+}
+
+/**
+ * Handle Enter key press in chat input
+ * @param {KeyboardEvent} event - The keyboard event
+ */
+function handleKeyPress(event) {
+    // Ctrl+Enter or Shift+Enter for new line
+    if ((event.ctrlKey || event.shiftKey) && event.key === 'Enter') {
+        // Allow default behavior (new line)
+        return;
+    }
+
+    // Enter alone to send
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        sendMessage();
+    }
+}
+
+/**
+ * Main function to send a message to the AI and handle the response
+ * Manages the entire chat flow including user input, API calls, streaming, and tool execution
+ */
+async function sendMessage() {
+    if (isGenerating) return;
+
+    const chatInput = document.getElementById('chat-input');
+    const message = chatInput.value.trim();
+
+    if (!message) return;
+
+    // Check if there's an image attached for vision models
+    const hasImage = isVisionModelSelected() && currentImage;
+
+    // Display user message in chat
+    displayUserMessage(message, hasImage ? currentImage : null);
+
+    // Add to chat history
     if (hasImage) {
-        // For vision models, send image as base64
         chatHistory.push({
             role: 'user',
             content: message,
             images: [currentImage.split(',')[1]] // Remove data:image/...;base64, prefix
         });
+        removeImage(); // Clear image after sending
     } else {
         chatHistory.push({ role: 'user', content: message });
     }
 
+    // Clear input
     chatInput.value = '';
 
-    // Clear the image after sending
-    if (hasImage) {
-        removeImage();
-    }
-
-    // Disable input
+    // Set generating state
     isGenerating = true;
-    const sendButton = document.getElementById('send-button');
-    const thinkingAnimation = document.getElementById('thinking-animation');
+    setGeneratingState(true);
 
-    sendButton.disabled = true;
-    chatInput.disabled = true;
-    chatInput.style.opacity = '0.5';
-    chatInput.style.cursor = 'not-allowed';
-    thinkingAnimation.classList.add('active');
-    document.getElementById('typing-indicator').classList.add('active');
-
-    // Prepare request with all settings
+    // Get settings
     const ollamaUrl = document.getElementById('ollama-url').value;
     const model = document.getElementById('model-select').value;
-    const temperature = parseFloat(document.getElementById('temperature').value);
-    const maxTokens = parseInt(document.getElementById('max-tokens').value);
-    const topP = parseFloat(document.getElementById('top-p').value);
-    const topK = parseInt(document.getElementById('top-k').value);
-    const repeatPenalty = parseFloat(document.getElementById('repeat-penalty').value);
+    const modelOptions = {
+        temperature: parseFloat(document.getElementById('temperature').value),
+        maxTokens: parseInt(document.getElementById('max-tokens').value),
+        topP: parseFloat(document.getElementById('top-p').value),
+        topK: parseInt(document.getElementById('top-k').value),
+        repeatPenalty: parseFloat(document.getElementById('repeat-penalty').value)
+    };
     const systemPrompt = document.getElementById('system-prompt').value;
 
+    // Prepare messages with system prompt and tools
     const messages = [];
     let systemMessage = systemPrompt || '';
-
-    // Add tools prompt if web search is enabled
     systemMessage += getToolsPrompt();
 
     if (systemMessage) {
@@ -1686,33 +1943,26 @@ async function sendMessage() {
     const messageDiv = createMessageElement('assistant', model);
     const contentDiv = messageDiv.querySelector('.message-content');
 
+    // Initialize response tracking
     let fullResponse = '';
     let startTime = Date.now();
-    let totalTokens = 0;
     let promptTokens = 0;
     let evalTokens = 0;
 
-    // Thinking model variables
+    // Thinking model state
     let isThinkingModel = isThinkingModelSelected();
-    let thinkingContent = '';
-    let regularContent = '';
-    let insideThinkTag = false;
-    let thinkingBox = null;
-    let hasShownThinking = false;
+    const thinkingState = {
+        thinkingContent: '',
+        regularContent: '',
+        insideThinkTag: false,
+        thinkingBox: null,
+        hasShownThinking: false,
+        fullResponse: fullResponse
+    };
 
     try {
-        const apiPayload = {
-            model: model,
-            messages: messages,
-            stream: true,
-            options: {
-                temperature: temperature,
-                num_predict: maxTokens,
-                top_p: topP,
-                top_k: topK,
-                repeat_penalty: repeatPenalty
-            }
-        };
+        // Prepare API request
+        const apiPayload = prepareAPIPayload(model, messages, modelOptions);
 
         // Log API request in debug mode
         addDebugLog(
@@ -1915,14 +2165,7 @@ async function sendMessage() {
             contentDiv.innerHTML = parseMarkdown(fullResponse);
 
             // Update message header with stats for the tool request
-            const headerDiv = messageDiv.querySelector('.message-header');
-            const statsSpan = document.createElement('div');
-            statsSpan.className = 'message-stats';
-            statsSpan.innerHTML = `
-                <span>${totalTokens} tokens</span>
-                <span>${tokensPerSecond} tk/s</span>
-            `;
-            headerDiv.appendChild(statsSpan);
+            updateMessageStats(messageDiv, totalTokens, tokensPerSecond);
 
             // Execute tool calls and display results
             for (const toolCall of toolCalls) {
@@ -1948,7 +2191,7 @@ async function sendMessage() {
                 let formattedResult;
                 let collapsibleTitle;
 
-                if (toolCall.name === 'web_search') {
+                if (toolCall.name === TOOL_CONFIG.NAMES.WEB_SEARCH) {
                     formattedResult = formatSearchResults(toolResult);
                     collapsibleTitle = `🔍 Web Search Results: "${toolCall.query}"`;
                 } else {
@@ -1972,7 +2215,7 @@ async function sendMessage() {
                 chatHistory.push({ role: 'system', content: `Tool result for ${toolCall.name}("${toolCall.query}"):\n${toolResult}` });
 
                 // If file_analysis was executed and auto-clear is enabled, clear the file
-                if (toolCall.name === 'file_analysis' && settings['auto-clear-file']) {
+                if (toolCall.name === TOOL_CONFIG.NAMES.FILE_ANALYSIS && settings['auto-clear-file']) {
                     removeFile();
                 }
             }
@@ -2065,17 +2308,10 @@ async function sendMessage() {
                     chatHistory.push({ role: 'assistant', content: synthesisFullResponse });
 
                     // Update synthesis message header with stats
-                    const synthesisHeaderDiv = synthesisMessageDiv.querySelector('.message-header');
                     const synthesisTotalTokens = synthesisPromptTokens + synthesisEvalTokens;
                     const synthesisElapsedTime = (Date.now() - synthesisStartTime) / 1000;
                     const synthesisTokensPerSecond = synthesisEvalTokens > 0 ? (synthesisEvalTokens / synthesisElapsedTime).toFixed(2) : 0;
-                    const synthesisStatsSpan = document.createElement('div');
-                    synthesisStatsSpan.className = 'message-stats';
-                    synthesisStatsSpan.innerHTML = `
-                        <span>${synthesisTotalTokens} tokens</span>
-                        <span>${synthesisTokensPerSecond} tk/s</span>
-                    `;
-                    synthesisHeaderDiv.appendChild(synthesisStatsSpan);
+                    updateMessageStats(synthesisMessageDiv, synthesisTotalTokens, synthesisTokensPerSecond);
                 }
 
             } catch (synthesisError) {
@@ -2121,14 +2357,7 @@ async function sendMessage() {
             }
 
             // Update message header with stats
-            const headerDiv = messageDiv.querySelector('.message-header');
-            const statsSpan = document.createElement('div');
-            statsSpan.className = 'message-stats';
-            statsSpan.innerHTML = `
-                <span>${totalTokens} tokens</span>
-                <span>${tokensPerSecond} tk/s</span>
-            `;
-            headerDiv.appendChild(statsSpan);
+            updateMessageStats(messageDiv, totalTokens, tokensPerSecond);
 
             scrollToBottom();
         } else {
@@ -2145,16 +2374,7 @@ async function sendMessage() {
         }
     } finally {
         isGenerating = false;
-        const sendButton = document.getElementById('send-button');
-        const chatInput = document.getElementById('chat-input');
-        const thinkingAnimation = document.getElementById('thinking-animation');
-
-        sendButton.disabled = false;
-        chatInput.disabled = false;
-        chatInput.style.opacity = '1';
-        chatInput.style.cursor = 'text';
-        thinkingAnimation.classList.remove('active');
-        document.getElementById('typing-indicator').classList.remove('active');
+        setGeneratingState(false);
     }
 }
 
@@ -2265,7 +2485,10 @@ function escapeHtml(text) {
               .replace(/'/g, '&#039;');
 }
 
-// Copy Code
+/**
+ * Copy code from a code block to clipboard
+ * @param {HTMLElement} button - The copy button element that was clicked
+ */
 function copyCode(button) {
     // Get the specific code block that contains this button
     const codeBlock = button.closest('.code-block');
@@ -2293,13 +2516,13 @@ function copyCode(button) {
         setTimeout(() => {
             button.textContent = originalText;
             button.style.opacity = '1';
-        }, 2000);
+        }, CONSTANTS.COPY_BUTTON_TIMEOUT);
     }).catch(err => {
         console.error('Failed to copy code:', err);
         button.textContent = 'Error';
         setTimeout(() => {
             button.textContent = 'Copy';
-        }, 2000);
+        }, CONSTANTS.COPY_BUTTON_TIMEOUT);
     });
 }
 
