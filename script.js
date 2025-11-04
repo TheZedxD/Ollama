@@ -2369,9 +2369,9 @@ async function sendMessage() {
         // Add timeout handling to prevent infinite hangs
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
-            console.error('Request timeout - aborting after 60 seconds');
+            console.error('Request timeout - aborting after 5 minutes');
             controller.abort();
-        }, 60000); // 60 second timeout for initial response
+        }, 300000); // 5 minute timeout for longer generation responses
 
         let response;
         try {
