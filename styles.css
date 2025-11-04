@@ -4,6 +4,15 @@
     box-sizing: border-box;
 }
 
+html {
+    height: 100%;
+    overflow: hidden;
+}
+
+html, body {
+    scroll-behavior: smooth;
+}
+
 /* Default Dark Theme */
 :root {
     --bg-primary: #0a0e27;
@@ -404,66 +413,28 @@ body {
 .chat-messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 30px;
+    padding-bottom: 30px;
     display: flex;
     flex-direction: column;
     gap: 20px;
-    background-color: #000000;
+    background-color: var(--bg-primary);
     min-height: 0; /* Allow flexbox to shrink properly */
+    max-width: 100%;
 }
 
-[data-theme="light"] .chat-messages {
-    background-color: #f5ede0;
-}
-
-[data-theme="light"] .chat-messages::-webkit-scrollbar-track {
-    background-color: #f5ede0;
-}
-
-[data-theme="light"] .code-block {
-    background-color: #0d1117;
-}
-
-[data-theme="light"] .message-content pre {
-    background-color: #0d1117;
-    border-color: #8b6f47;
-}
-
-[data-theme="light"] .message-content pre code {
-    color: #e0e0e0;
-}
-
-[data-theme="light"] .code-header {
-    background-color: #1a1f3a;
-    color: #00ff9f;
-    border-color: #8b6f47;
-}
-
-[data-theme="light"] .message-content code {
-    background-color: #0d1117;
-    color: #00ff9f;
-    border-color: #8b6f47;
-}
-
-[data-theme="light"] .message-content pre::-webkit-scrollbar-track {
-    background-color: #0d1117;
-}
-
-[data-theme="light"] .message-content pre::-webkit-scrollbar-thumb {
-    background-color: #00ff9f;
-}
-
-[data-theme="light"] .copy-button {
-    background-color: #00ff9f;
-    color: #0a0e27;
-}
+/* Theme-specific code block styling is now handled by CSS variables */
 
 .message {
     display: flex;
     flex-direction: column;
     max-width: 80%;
     min-width: 0;
+    width: fit-content;
     animation: fadeIn 0.3s ease-in;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 @keyframes fadeIn {
@@ -604,14 +575,7 @@ body {
     background-color: rgba(0, 255, 159, 0.06);
 }
 
-[data-theme="light"] .search-result-item {
-    background-color: rgba(139, 111, 71, 0.05);
-    border-left: 3px solid var(--text-primary);
-}
-
-[data-theme="light"] .search-result-item:hover {
-    background-color: rgba(139, 111, 71, 0.1);
-}
+/* Search result styling now uses theme variables for all themes */
 
 .search-result-header {
     display: flex;
@@ -1146,11 +1110,16 @@ body {
 }
 
 .chat-messages::-webkit-scrollbar-track {
-    background-color: #000000;
+    background-color: var(--bg-primary);
 }
 
 .chat-messages::-webkit-scrollbar-thumb {
     background-color: var(--border-color);
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-primary);
 }
 
 .typing-indicator {
@@ -1348,7 +1317,7 @@ body {
     color: var(--text-normal);
     font-size: 11px;
     white-space: nowrap;
-    z-index: 30;
+    z-index: 1000;
     pointer-events: none;
 }
 
@@ -1362,12 +1331,7 @@ body {
     border-right-color: var(--border-color);
 }
 
-/* Light mode sidebar input styling */
-[data-theme="light"] .sidebar-section select,
-[data-theme="light"] .sidebar-section input {
-    background-color: #ffffff;
-    color: #3d2817;
-}
+/* Sidebar input styling now handled by theme CSS variables */
 
 /* Sidebar Tooltips */
 .sidebar-section {
@@ -1388,7 +1352,7 @@ body {
     line-height: 1.4;
     white-space: normal;
     width: 220px;
-    z-index: 50;
+    z-index: 1000;
     pointer-events: none;
 }
 
@@ -1874,4 +1838,53 @@ body {
 
 .error-notification.warning .error-close:hover {
     background-color: rgba(255, 193, 7, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 240px;
+    }
+
+    .sidebar-toggle {
+        left: 240px;
+    }
+
+    .sidebar-toggle.collapsed {
+        left: 0;
+    }
+
+    .message {
+        max-width: 90%;
+    }
+
+    .chat-messages {
+        padding: 20px;
+    }
+
+    .sidebar-tooltip {
+        display: none !important; /* Hide tooltips on small screens to prevent overflow */
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar {
+        width: 200px;
+    }
+
+    .sidebar-toggle {
+        left: 200px;
+    }
+
+    .message {
+        max-width: 95%;
+    }
+
+    .chat-messages {
+        padding: 15px;
+    }
+
+    .chat-input-container {
+        margin: 10px 15px;
+    }
 }
