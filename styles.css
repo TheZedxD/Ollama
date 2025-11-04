@@ -4,6 +4,7 @@
     box-sizing: border-box;
 }
 
+/* Default Dark Theme */
 :root {
     --bg-primary: #0a0e27;
     --bg-secondary: #1a1f3a;
@@ -20,7 +21,42 @@
     --ai-msg-bg: #1a1f3a;
 }
 
-[data-theme="light"] {
+/* Matrix Theme - Black with Green Terminal Style */
+[data-theme="matrix"] {
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0a;
+    --bg-tertiary: #141414;
+    --text-primary: #00ff00;
+    --text-secondary: #00cc00;
+    --text-normal: #00ff00;
+    --border-color: #00ff00;
+    --input-bg: #0a0a0a;
+    --button-bg: #00ff00;
+    --button-text: #000000;
+    --code-bg: #000000;
+    --user-msg-bg: #0a0a0a;
+    --ai-msg-bg: #141414;
+}
+
+/* Aero Theme - Modern Light Grey with Shadows */
+[data-theme="aero"] {
+    --bg-primary: #f0f0f0;
+    --bg-secondary: #e8e8e8;
+    --bg-tertiary: #d0d0d0;
+    --text-primary: #333333;
+    --text-secondary: #555555;
+    --text-normal: #1a1a1a;
+    --border-color: #c0c0c0;
+    --input-bg: #ffffff;
+    --button-bg: #d0d0d0;
+    --button-text: #1a1a1a;
+    --code-bg: #e0e0e0;
+    --user-msg-bg: #ffffff;
+    --ai-msg-bg: #f8f8f8;
+}
+
+/* Mud Theme - Brown Tones */
+[data-theme="mud"] {
     --bg-primary: #d4c5a9;
     --bg-secondary: #e8dcc8;
     --bg-tertiary: #c9b896;
@@ -34,6 +70,108 @@
     --code-bg: #0d1117;
     --user-msg-bg: #ffffff;
     --ai-msg-bg: #ffffff;
+}
+
+/* Coral Theme - Pink Tones */
+[data-theme="coral"] {
+    --bg-primary: #2d1b1f;
+    --bg-secondary: #3d2530;
+    --bg-tertiary: #4d2f3f;
+    --text-primary: #ff6b9d;
+    --text-secondary: #ff8fb3;
+    --text-normal: #ffb3d1;
+    --border-color: #ff6b9d;
+    --input-bg: #3d2530;
+    --button-bg: #ff6b9d;
+    --button-text: #2d1b1f;
+    --code-bg: #1a0d11;
+    --user-msg-bg: #3d2530;
+    --ai-msg-bg: #4d2f3f;
+}
+
+/* Ocean Theme - Blue Tones */
+[data-theme="ocean"] {
+    --bg-primary: #0d1b2a;
+    --bg-secondary: #1b263b;
+    --bg-tertiary: #293241;
+    --text-primary: #00b4d8;
+    --text-secondary: #48cae4;
+    --text-normal: #caf0f8;
+    --border-color: #00b4d8;
+    --input-bg: #1b263b;
+    --button-bg: #00b4d8;
+    --button-text: #0d1b2a;
+    --code-bg: #03071e;
+    --user-msg-bg: #1b263b;
+    --ai-msg-bg: #293241;
+}
+
+/* Forest Theme - Green Tones */
+[data-theme="forest"] {
+    --bg-primary: #1a2e1a;
+    --bg-secondary: #2a4029;
+    --bg-tertiary: #3a5239;
+    --text-primary: #7cfc00;
+    --text-secondary: #9acd32;
+    --text-normal: #d4f1d4;
+    --border-color: #7cfc00;
+    --input-bg: #2a4029;
+    --button-bg: #7cfc00;
+    --button-text: #1a2e1a;
+    --code-bg: #0d1b0d;
+    --user-msg-bg: #2a4029;
+    --ai-msg-bg: #3a5239;
+}
+
+/* Sunset Theme - Orange/Red Tones */
+[data-theme="sunset"] {
+    --bg-primary: #2d1810;
+    --bg-secondary: #3d2518;
+    --bg-tertiary: #4d3220;
+    --text-primary: #ff6b35;
+    --text-secondary: #ff8c42;
+    --text-normal: #ffd9cc;
+    --border-color: #ff6b35;
+    --input-bg: #3d2518;
+    --button-bg: #ff6b35;
+    --button-text: #2d1810;
+    --code-bg: #1a0d08;
+    --user-msg-bg: #3d2518;
+    --ai-msg-bg: #4d3220;
+}
+
+/* Purple Theme - Purple/Violet Tones */
+[data-theme="purple"] {
+    --bg-primary: #1e1432;
+    --bg-secondary: #2e1f47;
+    --bg-tertiary: #3e2a5c;
+    --text-primary: #b794f6;
+    --text-secondary: #d5b8ff;
+    --text-normal: #e8daff;
+    --border-color: #b794f6;
+    --input-bg: #2e1f47;
+    --button-bg: #b794f6;
+    --button-text: #1e1432;
+    --code-bg: #0f0a19;
+    --user-msg-bg: #2e1f47;
+    --ai-msg-bg: #3e2a5c;
+}
+
+/* Monochrome Theme - Pure Black and White */
+[data-theme="monochrome"] {
+    --bg-primary: #000000;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #2a2a2a;
+    --text-primary: #ffffff;
+    --text-secondary: #e0e0e0;
+    --text-normal: #cccccc;
+    --border-color: #666666;
+    --input-bg: #1a1a1a;
+    --button-bg: #ffffff;
+    --button-text: #000000;
+    --code-bg: #0a0a0a;
+    --user-msg-bg: #1a1a1a;
+    --ai-msg-bg: #2a2a2a;
 }
 
 body {
@@ -234,22 +372,33 @@ body {
     letter-spacing: 1px;
 }
 
-.theme-toggle {
+.theme-selector {
     position: absolute;
     right: 30px;
     background-color: var(--button-bg);
     color: var(--button-text);
-    border: none;
-    padding: 8px 16px;
+    border: 2px solid var(--border-color);
+    padding: 8px 12px;
     cursor: pointer;
     font-family: 'Courier New', monospace;
     font-size: 12px;
     text-transform: uppercase;
     transition: all 0.3s;
+    outline: none;
 }
 
-.theme-toggle:hover {
+.theme-selector:hover {
     opacity: 0.8;
+}
+
+.theme-selector:focus {
+    border-color: var(--text-primary);
+}
+
+.theme-selector option {
+    background-color: var(--bg-secondary);
+    color: var(--text-normal);
+    padding: 8px;
 }
 
 .chat-messages {

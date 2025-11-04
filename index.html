@@ -93,7 +93,18 @@
         <div class="main-content">
             <div class="chat-header">
                 <h2>CHAT INTERFACE</h2>
-                <button class="theme-toggle" onclick="toggleTheme()">Light/Dark</button>
+                <select class="theme-selector" id="theme-selector" onchange="changeTheme()">
+                    <option value="dark">Dark</option>
+                    <option value="matrix">Matrix</option>
+                    <option value="aero">Aero</option>
+                    <option value="mud">Mud</option>
+                    <option value="coral">Coral</option>
+                    <option value="ocean">Ocean</option>
+                    <option value="forest">Forest</option>
+                    <option value="sunset">Sunset</option>
+                    <option value="purple">Purple</option>
+                    <option value="monochrome">Monochrome</option>
+                </select>
             </div>
 
             <div class="chat-messages" id="chat-messages">

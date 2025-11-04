@@ -1072,6 +1072,12 @@ function loadSettings() {
         document.documentElement.setAttribute('data-theme', currentTheme);
     }
 
+    // Set the theme selector dropdown to match current theme
+    const themeSelector = document.getElementById('theme-selector');
+    if (themeSelector) {
+        themeSelector.value = currentTheme;
+    }
+
     // Load Ollama URL
     const savedUrl = localStorage.getItem(STORAGE_KEYS.OLLAMA_URL);
     if (savedUrl) {
@@ -1371,8 +1377,9 @@ document.addEventListener('click', function(event) {
 });
 
 // Theme Toggle
-function toggleTheme() {
-    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+function changeTheme() {
+    const themeSelector = document.getElementById('theme-selector');
+    currentTheme = themeSelector.value;
     document.documentElement.setAttribute('data-theme', currentTheme);
     saveSettings();
 }
