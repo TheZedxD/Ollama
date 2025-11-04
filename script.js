@@ -2347,16 +2347,13 @@ async function sendMessage() {
     // Get thinking animation element
     const thinkingAnimation = document.getElementById('thinking-animation');
 
-    // Thinking model state
+    // Thinking model state - declare variables for tracking thinking tags
     let isThinkingModel = isThinkingModelSelected();
-    const thinkingState = {
-        thinkingContent: '',
-        regularContent: '',
-        insideThinkTag: false,
-        thinkingBox: null,
-        hasShownThinking: false,
-        fullResponse: fullResponse
-    };
+    let thinkingContent = '';
+    let regularContent = '';
+    let insideThinkTag = false;
+    let thinkingBox = null;
+    let hasShownThinking = false;
 
     try {
         // Prepare API request
