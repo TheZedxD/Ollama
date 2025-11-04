@@ -2324,6 +2324,11 @@ async function sendMessage() {
     };
     const systemPrompt = document.getElementById('system-prompt').value;
 
+    // Log message processing start
+    console.log('🚀 Processing new message:', message.substring(0, 100));
+    addDebugLog('Message processing started', 'info',
+        `User message: ${message.substring(0, 200)}${message.length > 200 ? '...' : ''}\nModel: ${model}\nOllama URL: ${ollamaUrl}\nActive tools: ${Object.keys(activeTools).filter(k => activeTools[k]).join(', ') || 'none'}`);
+
     // Prepare messages with system prompt and tools
     const messages = [];
     let systemMessage = systemPrompt || '';
@@ -2612,6 +2617,13 @@ async function sendMessage() {
         // Check for tool calls
         const toolCalls = parseToolCalls(fullResponse);
 
+        // Log tool call detection status
+        console.log('Tool call check:', {
+            toolCallsFound: toolCalls.length,
+            activeTools: activeTools,
+            willExecuteTools: toolCalls.length > 0 && (activeTools['web-search'] || activeTools['file-analysis'])
+        });
+
         if (toolCalls.length > 0 && (activeTools['web-search'] || activeTools['file-analysis'])) {
             // Log tool call detection
             addDebugLog('Tool calls detected', 'info',
@@ -2735,11 +2747,30 @@ async function sendMessage() {
             try {
                 const synthesisPayload = prepareAPIPayload(model, synthesisMessages, modelOptions);
 
-                const synthesisResponse = await fetch(`${ollamaUrl}/api/chat`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(synthesisPayload)
-                });
+                // Add timeout handling for synthesis request
+                const synthesisController = new AbortController();
+                const synthesisTimeoutId = setTimeout(() => {
+                    console.error('Synthesis request timeout - aborting after 5 minutes');
+                    addDebugLog('Synthesis request timeout', 'error', 'Request aborted after 5 minutes');
+                    synthesisController.abort();
+                }, 300000); // 5 minute timeout
+
+                let synthesisResponse;
+                try {
+                    synthesisResponse = await fetch(`${ollamaUrl}/api/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(synthesisPayload),
+                        signal: synthesisController.signal
+                    });
+                    clearTimeout(synthesisTimeoutId);
+                } catch (error) {
+                    clearTimeout(synthesisTimeoutId);
+                    if (error.name === 'AbortError') {
+                        throw new Error('Synthesis request timed out after 5 minutes');
+                    }
+                    throw error;
+                }
 
                 if (!synthesisResponse.ok) {
                     throw new Error(`HTTP error! status: ${synthesisResponse.status}`);
@@ -2753,10 +2784,36 @@ async function sendMessage() {
                 let synthesisEvalTokens = 0;
                 const synthesisStartTime = Date.now();
 
+                // Add stream watchdog for synthesis
+                let synthesisLastChunkTime = Date.now();
+                let synthesisChunkCount = 0;
+                const SYNTHESIS_STREAM_TIMEOUT = 30000; // 30 seconds between chunks
+
+                addDebugLog('Synthesis stream started', 'info', 'Waiting for synthesis response...');
+
                 while (true) {
+                    // Check if synthesis stream has stalled
+                    const timeSinceLastChunk = Date.now() - synthesisLastChunkTime;
+                    if (timeSinceLastChunk > SYNTHESIS_STREAM_TIMEOUT) {
+                        console.error(`Synthesis stream stalled - no data received for ${timeSinceLastChunk}ms`);
+                        addDebugLog('Synthesis stream stalled', 'error',
+                            `No data received for ${(timeSinceLastChunk/1000).toFixed(1)} seconds\nChunks received: ${synthesisChunkCount}\nPartial response: ${synthesisFullResponse.substring(0, 500)}`);
+                        throw new Error('Synthesis stream stalled - no data received for 30 seconds');
+                    }
+
                     const { done, value } = await synthesisReader.read();
 
+                    // Update watchdog
+                    if (value) {
+                        synthesisLastChunkTime = Date.now();
+                        synthesisChunkCount++;
+                    }
+
                     if (done) {
+                        console.log(`Synthesis stream complete - received ${synthesisChunkCount} chunks, total response length: ${synthesisFullResponse.length}`);
+                        addDebugLog('Synthesis stream complete', 'info',
+                            `Chunks received: ${synthesisChunkCount}\nResponse length: ${synthesisFullResponse.length}\nPreview: ${synthesisFullResponse.substring(0, 200)}...`);
+
                         if (synthesisBuffer.trim()) {
                             try {
                                 const json = JSON.parse(synthesisBuffer);
@@ -2837,6 +2894,10 @@ async function sendMessage() {
             return; // Exit after tool execution and synthesis
         }
 
+        // No tool calls - display response directly
+        addDebugLog('Displaying response directly', 'info',
+            `No tool execution needed. Response length: ${fullResponse.length} characters`);
+
         // Final update - remove cursor and ensure proper parsing
         const trimmedFullResponse = fullResponse.trim();
         if (trimmedFullResponse) {
@@ -2871,6 +2932,11 @@ async function sendMessage() {
             updateMessageStats(messageDiv, totalTokens, tokensPerSecond);
 
             scrollToBottom();
+
+            // Log successful completion
+            console.log('✅ Message processing complete');
+            addDebugLog('Message processing complete', 'info',
+                `Response displayed successfully\nTotal tokens: ${totalTokens}\nElapsed time: ${elapsedTime.toFixed(2)}s\nTokens/sec: ${tokensPerSecond}`);
         } else {
             // Log detailed debugging information with more context
             console.error('Empty response received!');
