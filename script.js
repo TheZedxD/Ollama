@@ -2366,27 +2366,75 @@ async function sendMessage() {
             `Model: ${model}\nMessages: ${messages.length}\nStreaming: true`
         );
 
-        const response = await fetch(`${ollamaUrl}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(apiPayload)
-        });
+        // Add timeout handling to prevent infinite hangs
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.error('Request timeout - aborting after 60 seconds');
+            controller.abort();
+        }, 60000); // 60 second timeout for initial response
+
+        let response;
+        try {
+            response = await fetch(`${ollamaUrl}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(apiPayload),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId); // Clear timeout once we get a response
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                addDebugLog('Request timed out after 60 seconds', 'error',
+                    `Model: ${model}\nThis usually means:\n1. Ollama is not responding\n2. Model is not loaded\n3. Request is too complex\n\nTry:\n- Check if Ollama is running: ollama list\n- Try a simpler prompt\n- Restart Ollama service`);
+                throw new Error('Request timed out after 60 seconds. Ollama may not be responding.');
+            }
+            throw error;
+        }
 
         if (!response.ok) {
-            addDebugLog(`API Error: ${response.status} ${response.statusText}`, 'error');
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            addDebugLog(`API Error: ${response.status} ${response.statusText}`, 'error',
+                `Response: ${errorText}\nThis may indicate:\n- Model not found\n- Ollama internal error\n- Invalid request format`);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorText || response.statusText}`);
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
+        // Add streaming watchdog to detect stalled streams
+        let lastChunkTime = Date.now();
+        let chunkCount = 0;
+        let receivedAnyData = false;
+        const STREAM_TIMEOUT = 30000; // 30 seconds between chunks
+
+        console.log('Starting stream processing...');
+        addDebugLog('Stream processing started', 'info', `Waiting for response from ${model}...`);
+
         while (true) {
+            // Check if stream has stalled
+            const timeSinceLastChunk = Date.now() - lastChunkTime;
+            if (timeSinceLastChunk > STREAM_TIMEOUT) {
+                console.error(`Stream stalled - no data received for ${timeSinceLastChunk}ms`);
+                addDebugLog('Stream stalled', 'error',
+                    `No data received for ${(timeSinceLastChunk/1000).toFixed(1)} seconds\nChunks received: ${chunkCount}\nPartial response: ${fullResponse.substring(0, 500)}`);
+                throw new Error('Stream stalled - no data received for 30 seconds');
+            }
+
             const { done, value } = await reader.read();
 
+            // Update watchdog
+            if (value) {
+                lastChunkTime = Date.now();
+                chunkCount++;
+            }
+
             if (done) {
+                console.log(`Stream complete - received ${chunkCount} chunks, total response length: ${fullResponse.length}`);
+
                 // Process any remaining buffer
                 if (buffer.trim()) {
                     try {
@@ -2399,6 +2447,7 @@ async function sendMessage() {
                         if (json.eval_count) evalTokens = json.eval_count;
                     } catch (e) {
                         console.error('Error parsing final buffer:', e);
+                        addDebugLog('Error parsing final buffer', 'error', `Buffer: ${buffer}\nError: ${e.message}`);
                     }
                 }
                 break;
@@ -2414,6 +2463,17 @@ async function sendMessage() {
                 if (line.trim()) {
                     try {
                         const json = JSON.parse(line);
+
+                        // Mark that we received data
+                        receivedAnyData = true;
+
+                        // Log first chunk for debugging
+                        if (!fullResponse && json.message && json.message.content) {
+                            console.log('First chunk with content received:', json);
+                            addDebugLog('First response chunk received', 'info',
+                                `Model: ${json.model || 'unknown'}\nHas content: ${!!(json.message && json.message.content)}\nContent preview: ${json.message?.content?.substring(0, 100) || 'none'}`);
+                        }
+
                         if (json.message && json.message.content) {
                             fullResponse += json.message.content;
 
@@ -2813,10 +2873,23 @@ async function sendMessage() {
             scrollToBottom();
         } else {
             // Log detailed debugging information with more context
+            console.error('Empty response received!');
+            console.error('Received any data:', receivedAnyData);
+            console.error('Chunk count:', chunkCount);
+            console.error('Full response:', fullResponse);
+            console.error('Response length:', fullResponse.length);
+            console.error('Thinking model:', isThinkingModel);
+            console.error('Regular content:', regularContent);
+            console.error('Thinking content:', thinkingContent);
+
+            const errorDetails = receivedAnyData
+                ? `Received ${chunkCount} chunks but no content. This usually means:\n- Model returned metadata but no text\n- Response was filtered or empty\n- Model may need to be reloaded`
+                : `No data received from stream. This usually means:\n- Model is not loaded in Ollama\n- Ollama crashed or froze\n- Network connection issue`;
+
             addDebugLog('No response received from model', 'error',
-                `Model: ${model}\nMessages sent: ${messages.length}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nResponse length: ${fullResponse.length}\nResponse (raw): "${fullResponse}"\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}`
+                `Model: ${model}\nMessages sent: ${messages.length}\nChunks received: ${chunkCount}\nReceived any data: ${receivedAnyData}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nResponse length: ${fullResponse.length}\nResponse (raw): "${fullResponse}"\nResponse (hex): ${Array.from(fullResponse).map(c => c.charCodeAt(0).toString(16)).join(' ')}\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}\n\nThinking Model: ${isThinkingModel}\nRegular content: "${regularContent}"\nThinking content: "${thinkingContent}"\n\n${errorDetails}`
             );
-            throw new Error('No response received from model. Please check that the model is loaded and responding correctly.');
+            throw new Error(`No response received from model.\n\n${errorDetails}\n\nSteps to fix:\n1. Check Ollama is running: ollama list\n2. Load the model: ollama run ${model}\n3. Try a simpler prompt\n4. Check Debug Mode panel for details\n5. Restart Ollama if needed`);
         }
 
     } catch (error) {
