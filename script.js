@@ -43,22 +43,38 @@ const MODEL_CONFIGS = {
     'llama3.2:3b': {
         name: 'llama3.2:3b',
         supportsVision: false,
+        supportsThinking: false,
         isDefault: true
+    },
+    'qwen3:4b': {
+        name: 'qwen3:4b',
+        supportsVision: false,
+        supportsThinking: true,
+        isDefault: false
+    },
+    'qwen3': {
+        name: 'qwen3',
+        supportsVision: false,
+        supportsThinking: true,
+        isDefault: false
     },
     'qwen2-vl:2b': {
         name: 'qwen2-vl:2b',
         supportsVision: true,
+        supportsThinking: false,
         isDefault: false
     },
     // Support for other common vision model names
     'llava': {
         name: 'llava',
         supportsVision: true,
+        supportsThinking: false,
         isDefault: false
     },
     'llava:latest': {
         name: 'llava:latest',
         supportsVision: true,
+        supportsThinking: false,
         isDefault: false
     }
 };
@@ -185,12 +201,31 @@ document.addEventListener('DOMContentLoaded', () => {
     updateImageButtonVisibility();
     updateFileButtonVisibility();
     setupDragAndDrop();
+    setupTooltipPositioning();
 
     // Initialize PDF.js worker
     if (typeof pdfjsLib !== 'undefined') {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 });
+
+/**
+ * Setup dynamic tooltip positioning based on hovered element
+ */
+function setupTooltipPositioning() {
+    const sidebarSections = document.querySelectorAll('.sidebar-section');
+
+    sidebarSections.forEach(section => {
+        const tooltip = section.querySelector('.sidebar-tooltip');
+        if (!tooltip) return;
+
+        section.addEventListener('mouseenter', function() {
+            const rect = section.getBoundingClientRect();
+            // Position tooltip at the vertical center of the hovered section
+            tooltip.style.top = `${rect.top + (rect.height / 2) - 30}px`;
+        });
+    });
+}
 
 /**
  * Estimate token count for a given text
@@ -223,9 +258,9 @@ function isVisionModelSelected() {
     const visionPatterns = [
         'llava',
         'bakllava',
-        'qwen',
         'qwen2-vl',
         'qwen-vl',
+        'qwenvl',
         'minicpm-v',
         'cogvlm',
         'yi-vl',
@@ -245,17 +280,28 @@ function isVisionModelSelected() {
 function isThinkingModelSelected() {
     const selectedModel = document.getElementById('model-select').value.toLowerCase();
 
+    // Check hardcoded configs first
+    if (MODEL_CONFIGS[selectedModel]?.supportsThinking !== undefined) {
+        return MODEL_CONFIGS[selectedModel].supportsThinking;
+    }
+
     // Pattern matching for thinking model names
+    // NOTE: Be careful with 'qwen' - only match specific thinking models
     const thinkingPatterns = [
         'deepseek-r1',
         'deepseek-reasoner',
         'qwq',
-        'qwen',  // Added qwen models
+        'qwen3',  // qwen3 models are thinking models
         'r1:',
         '-r1',
         'reasoning',
         'think'
     ];
+
+    // Exclude vision models from thinking detection
+    if (selectedModel.includes('vl') || selectedModel.includes('vision')) {
+        return false;
+    }
 
     return thinkingPatterns.some(pattern => selectedModel.includes(pattern));
 }
