@@ -13,6 +13,11 @@ let settings = {
 let debugMode = false; // Debug mode state
 let debugPanelCollapsed = false; // Debug panel collapsed state
 let currentImage = null; // Store current image data
+
+// TODO: Consolidate file state management
+// Currently using both individual variables (currentFile, currentFileName, currentFileType)
+// and appState.file object. Should migrate to single source of truth in appState.file
+// to prevent synchronization issues and improve maintainability.
 let currentFile = null; // Store current file data
 let currentFileName = ''; // Store current file name
 let currentFileType = ''; // Store current file type/extension
@@ -1534,6 +1539,8 @@ async function searchDuckDuckGo(query) {
         const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
         const html = await response.text();
 
+        // TODO: Optimize HTML parsing - DOMParser is synchronous and blocks rendering
+        // Consider using a Web Worker for large HTML or implementing incremental parsing
         // Parse HTML to extract search results
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
@@ -2006,46 +2013,39 @@ function parseToolCalls(text) {
         };
     }
 
-    // Pattern 1: <tool>web_search("query here")</tool> - with double quotes
-    const pattern1 = /<tool>(\w+)\("([^"]+)"\)<\/tool>/gi;
+    // Create a Set to track unique tool calls (O(1) lookup vs O(n) with array.some())
+    // Prevents duplicate tool executions when AI repeats the same call
+    const seenToolCalls = new Set();
+
+    // Helper function to add unique tool calls
+    // Uses Set for efficient deduplication based on toolName:paramValue key
+    function addUniqueToolCall(toolName, paramValue) {
+        const key = `${toolName}:${paramValue}`;
+        if (!seenToolCalls.has(key)) {
+            seenToolCalls.add(key);
+            toolCalls.push({
+                name: toolName,
+                ...createParameters(paramValue)
+            });
+        }
+    }
+
+    // Combined pattern to match all quote styles: double quotes, single quotes, or no quotes
+    // This single regex handles all three cases efficiently in one pass
+    // Regex breakdown: <tool>(\w+)\((?:"([^"]+)"|'([^']+)'|([^)]+))\)<\/tool>
+    //   - (\w+): Captures tool name (e.g., web_search, file_analysis)
+    //   - (?:"([^"]+)"|'([^']+)'|([^)]+)): Non-capturing group with three alternatives:
+    //     * "([^"]+)": Matches double-quoted parameter (group 2)
+    //     * '([^']+)': Matches single-quoted parameter (group 3)
+    //     * ([^)]+): Matches unquoted parameter (group 4)
+    const combinedPattern = /<tool>(\w+)\((?:"([^"]+)"|'([^']+)'|([^)]+))\)<\/tool>/gi;
     let match;
 
-    while ((match = pattern1.exec(text)) !== null) {
+    while ((match = combinedPattern.exec(text)) !== null) {
         const toolName = match[1].toLowerCase();
-        const paramValue = match[2];
-        toolCalls.push({
-            name: toolName,
-            ...createParameters(paramValue)
-        });
-    }
-
-    // Pattern 2: <tool>web_search('query here')</tool> - with single quotes
-    const pattern2 = /<tool>(\w+)\('([^']+)'\)<\/tool>/gi;
-    while ((match = pattern2.exec(text)) !== null) {
-        const toolName = match[1].toLowerCase();
-        const paramValue = match[2];
-        // Check if this exact call wasn't already added by pattern1
-        const exists = toolCalls.some(tc => tc.name === toolName && tc.query === paramValue);
-        if (!exists) {
-            toolCalls.push({
-                name: toolName,
-                ...createParameters(paramValue)
-            });
-        }
-    }
-
-    // Pattern 3: <tool>web_search(query here)</tool> - without quotes
-    const pattern3 = /<tool>(\w+)\(([^)]+)\)<\/tool>/gi;
-    while ((match = pattern3.exec(text)) !== null) {
-        const toolName = match[1].toLowerCase();
-        const paramValue = match[2].replace(/^["']|["']$/g, '').trim(); // Remove quotes if present
-        const exists = toolCalls.some(tc => tc.name === toolName && tc.query === paramValue);
-        if (!exists) {
-            toolCalls.push({
-                name: toolName,
-                ...createParameters(paramValue)
-            });
-        }
+        // Extract the parameter value from whichever group matched (2=double quotes, 3=single quotes, 4=no quotes)
+        const paramValue = (match[2] || match[3] || match[4] || '').replace(/^["']|["']$/g, '').trim();
+        addUniqueToolCall(toolName, paramValue);
     }
 
     // Pattern 4: JSON-style tool calls in code blocks
@@ -2399,9 +2399,9 @@ async function sendMessage() {
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                addDebugLog('Request timed out after 60 seconds', 'error',
+                addDebugLog('Request timed out after 5 minutes', 'error',
                     `Model: ${model}\nThis usually means:\n1. Ollama is not responding\n2. Model is not loaded\n3. Request is too complex\n\nTry:\n- Check if Ollama is running: ollama list\n- Try a simpler prompt\n- Restart Ollama service`);
-                throw new Error('Request timed out after 60 seconds. Ollama may not be responding.');
+                throw new Error('Request timed out after 5 minutes. Ollama may not be responding.');
             }
             throw error;
         }
@@ -2741,6 +2741,11 @@ async function sendMessage() {
             document.getElementById('typing-indicator').classList.add('active');
 
             // Prepare synthesis messages with system prompt and tools context
+            // TODO: Optimize synthesis token usage - currently includes full chat history
+            // As conversations grow, synthesis requests become increasingly token-heavy
+            // Consider: 1) Limiting context window to recent messages
+            //          2) Summarizing older messages
+            //          3) Only including relevant tool results without full history
             const synthesisMessages = [];
             let synthesisSystemMessage = systemPrompt || '';
             synthesisSystemMessage += getToolsPrompt();
@@ -2945,28 +2950,31 @@ async function sendMessage() {
             addDebugLog('Message processing complete', 'info',
                 `Response displayed successfully\nTotal tokens: ${totalTokens}\nElapsed time: ${elapsedTime.toFixed(2)}s\nTokens/sec: ${tokensPerSecond}`);
         } else {
-            // Log detailed debugging information with more context
+            // Empty response - provide user-friendly error with debugging info
             console.error('Empty response received!');
             console.error('Received any data:', receivedAnyData);
             console.error('Chunk count:', chunkCount);
-            console.error('Full response:', fullResponse);
-            console.error('Response length:', fullResponse.length);
-            console.error('Thinking model:', isThinkingModel);
-            console.error('Regular content:', regularContent);
-            console.error('Thinking content:', thinkingContent);
 
+            // Determine likely cause and provide actionable guidance
             const errorDetails = receivedAnyData
-                ? `Received ${chunkCount} chunks but no content. This usually means:\n- Model returned metadata but no text\n- Response was filtered or empty\n- Model may need to be reloaded`
-                : `No data received from stream. This usually means:\n- Model is not loaded in Ollama\n- Ollama crashed or froze\n- Network connection issue`;
+                ? 'The model returned metadata but no text content. This may indicate the response was filtered or the model needs to be reloaded.'
+                : 'No data received from the model stream. The model may not be loaded or Ollama may have encountered an issue.';
 
-            addDebugLog('No response received from model', 'error',
-                `Model: ${model}\nMessages sent: ${messages.length}\nChunks received: ${chunkCount}\nReceived any data: ${receivedAnyData}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nResponse length: ${fullResponse.length}\nResponse (raw): "${fullResponse}"\nResponse (hex): ${Array.from(fullResponse).map(c => c.charCodeAt(0).toString(16)).join(' ')}\nLast message: ${messages[messages.length - 1]?.content?.substring(0, 200)}\n\nThinking Model: ${isThinkingModel}\nRegular content: "${regularContent}"\nThinking content: "${thinkingContent}"\n\n${errorDetails}`
+            // Log detailed debugging information for troubleshooting
+            addDebugLog('Empty response from model', 'error',
+                `Model: ${model}\nMessages sent: ${messages.length}\nChunks received: ${chunkCount}\nReceived any data: ${receivedAnyData}\nPrompt tokens: ${promptTokens}\nEval tokens: ${evalTokens}\nResponse length: ${fullResponse.length}\nThinking Model: ${isThinkingModel}\nRegular content length: ${regularContent.length}\nThinking content length: ${thinkingContent.length}\n\n${errorDetails}`
             );
-            throw new Error(`No response received from model.\n\n${errorDetails}\n\nSteps to fix:\n1. Check Ollama is running: ollama list\n2. Load the model: ollama run ${model}\n3. Try a simpler prompt\n4. Check Debug Mode panel for details\n5. Restart Ollama if needed`);
+
+            throw new Error(`No response received from model.\n\n${errorDetails}\n\nQuick fixes:\n1. Reload the model: ollama run ${model}\n2. Try a simpler prompt\n3. Enable Debug Mode for details\n4. Restart Ollama if the issue persists`);
         }
 
     } catch (error) {
         console.error('Error:', error);
+        // Remove streaming cursor before showing error
+        const cursor = contentDiv.querySelector('.streaming-cursor');
+        if (cursor) {
+            cursor.remove();
+        }
         contentDiv.innerHTML = `<p style="color: #ff4444;">Error: ${error.message}</p>`;
         // Remove the failed assistant message from history
         const chatMessages = document.getElementById('chat-messages');
@@ -2976,6 +2984,15 @@ async function sendMessage() {
     } finally {
         isGenerating = false;
         setGeneratingState(false);
+        // Ensure thinking animation is stopped
+        const thinkingAnimation = document.getElementById('thinking-animation');
+        if (thinkingAnimation) {
+            thinkingAnimation.classList.remove('active');
+        }
+        const typingIndicator = document.getElementById('typing-indicator');
+        if (typingIndicator) {
+            typingIndicator.classList.remove('active');
+        }
     }
 }
 
